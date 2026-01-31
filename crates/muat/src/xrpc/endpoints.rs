@@ -1,5 +1,7 @@
 //! XRPC endpoint definitions and request/response types.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 // ============================================================================

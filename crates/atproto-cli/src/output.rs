@@ -10,6 +10,7 @@ pub fn success(msg: &str) {
 }
 
 /// Print an error message.
+#[allow(dead_code)]
 pub fn error(msg: &str) {
     eprintln!("{} {}", "✗".red(), msg);
 }

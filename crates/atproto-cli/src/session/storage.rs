@@ -80,6 +80,7 @@ pub async fn load_session() -> Result<Option<Session>> {
 }
 
 /// Clear the stored session.
+#[allow(dead_code)]
 pub async fn clear_session() -> Result<()> {
     let path = session_path()?;
 

@@ -28,11 +28,13 @@ impl XrpcClient {
     }
 
     /// Returns the PDS URL this client is configured for.
+    #[allow(dead_code)]
     pub fn pds(&self) -> &PdsUrl {
         &self.pds
     }
 
     /// Make an unauthenticated XRPC query (GET request).
+    #[allow(dead_code)]
     #[instrument(skip(self), fields(pds = %self.pds))]
     pub async fn query<Q, R>(&self, method: &str, params: &Q) -> Result<R, Error>
     where
@@ -83,7 +85,7 @@ impl XrpcClient {
         R: DeserializeOwned,
     {
         let url = self.pds.xrpc_url(method);
-        debug!(method, "XRPC procedure");
+        debug!(method, %url, "XRPC procedure");
 
         let response = self.client.post(&url).json(body).send().await?;
 

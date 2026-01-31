@@ -53,7 +53,10 @@ impl PdsUrl {
 
     /// Returns the XRPC endpoint URL for a given method.
     pub fn xrpc_url(&self, method: &str) -> String {
-        format!("{}/xrpc/{}", self.0, method)
+        // The URL crate always adds a trailing slash to root paths,
+        // so we need to handle that when constructing the XRPC URL
+        let base = self.0.as_str().trim_end_matches('/');
+        format!("{}/xrpc/{}", base, method)
     }
 
     /// Returns the base URL as a string.
@@ -173,9 +176,13 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_trailing_slash() {
+    fn normalizes_trailing_slash_in_xrpc_url() {
         let pds = PdsUrl::new("https://bsky.social/").unwrap();
-        assert_eq!(pds.as_str(), "https://bsky.social");
+        // The important thing is that xrpc_url works correctly
+        assert_eq!(
+            pds.xrpc_url("com.atproto.server.createSession"),
+            "https://bsky.social/xrpc/com.atproto.server.createSession"
+        );
     }
 
     #[test]

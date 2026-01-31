@@ -1,5 +1,7 @@
 # PRD-001: muat — Core AT Protocol Library
 
+Status: done
+
 ## Purpose
 
 `muat` is a foundational Rust library implementing **AT Protocol fundamentals** directly, without dependence on Bluesky-specific application semantics or third-party client abstractions.

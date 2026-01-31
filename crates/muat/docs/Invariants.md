@@ -1,8 +1,5 @@
 # muat — Core Types & Invariants
 
-## Status
-Draft (Normative)
-
 ## Purpose
 
 This document defines the **normative core types** and **invariants** for the `muat` protocol library.

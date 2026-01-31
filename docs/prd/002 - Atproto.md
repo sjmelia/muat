@@ -1,4 +1,6 @@
-# PRD-001: atproto — PDS Exploration CLI
+# PRD-002: atproto — PDS Exploration CLI
+
+Status: done
 
 ## Purpose
 
