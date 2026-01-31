@@ -52,16 +52,14 @@ jobs:
 
       # 3) Integration tests (real PDS) — uses secrets as env vars
       #
-      # NOTE: This step only runs if both secrets are present.
-      # Your tests should read these env vars and proceed; otherwise they should skip.
+      # NOTE: Secrets are not available on forked PRs. We skip in that case.
       - name: Integration tests (real PDS)
-        if: ${{ secrets.ATPROTO_TEST_IDENTIFIER != '' && secrets.ATPROTO_TEST_PASSWORD != '' }}
         env:
           ATPROTO_TEST_IDENTIFIER: ${{ secrets.ATPROTO_TEST_IDENTIFIER }}
           ATPROTO_TEST_PASSWORD: ${{ secrets.ATPROTO_TEST_PASSWORD }}
-        run: cargo test --workspace --all-targets --all-features -- --nocapture
-
-      - name: Integration tests skipped (missing secrets)
-        if: ${{ secrets.ATPROTO_TEST_IDENTIFIER == '' || secrets.ATPROTO_TEST_PASSWORD == '' }}
         run: |
-          echo "Skipping integration tests: missing ATPROTO_TEST_IDENTIFIER and/or ATPROTO_TEST_PASSWORD secrets."
+          if [[ -z "$ATPROTO_TEST_IDENTIFIER" || -z "$ATPROTO_TEST_PASSWORD" ]]; then
+            echo "Skipping integration tests: missing ATPROTO_TEST_IDENTIFIER and/or ATPROTO_TEST_PASSWORD secrets."
+            exit 0
+          fi
+          cargo test --workspace --all-targets --all-features -- --nocapture
