@@ -21,8 +21,8 @@ struct StoredSession {
 
 /// Get the session file path.
 fn session_path() -> Result<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "atproto")
-        .context("Could not determine config directory")?;
+    let dirs =
+        ProjectDirs::from("", "", "atproto").context("Could not determine config directory")?;
 
     let data_dir = dirs.data_dir();
     fs::create_dir_all(data_dir).context("Failed to create data directory")?;

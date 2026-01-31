@@ -1,1 +1,17 @@
+# Rust
 target
+
+# VS Code (keep shared config commit-safe; ignore local state)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Devcontainer local overrides (if you ever add them)
+.devcontainer/.env
+.devcontainer/*.local.*
+
+# Claude / agent local settings
+.claude/settings.local.json
+.claude/**/*.local.*

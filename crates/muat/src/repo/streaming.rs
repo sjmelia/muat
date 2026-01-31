@@ -109,7 +109,10 @@ pub trait RepoEventHandler: Send {
     /// Handle a repository event.
     ///
     /// Return `Ok(true)` to continue receiving events, `Ok(false)` to stop.
-    fn handle(&mut self, event: RepoEvent) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
+    fn handle(
+        &mut self,
+        event: RepoEvent,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>>;
 }
 
 /// A function-based event handler.
@@ -117,7 +120,10 @@ impl<F> RepoEventHandler for F
 where
     F: FnMut(RepoEvent) -> bool + Send,
 {
-    fn handle(&mut self, event: RepoEvent) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
+    fn handle(
+        &mut self,
+        event: RepoEvent,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + '_>> {
         let continue_listening = (self)(event);
         Box::pin(async move { Ok(continue_listening) })
     }
@@ -149,11 +155,12 @@ impl RepoSubscription {
         let ws_url = self.build_ws_url();
         info!(url = %ws_url, "Connecting to repo subscription");
 
-        let (ws_stream, _) = connect_async(&ws_url)
-            .await
-            .map_err(|e| TransportError::Connection {
-                message: e.to_string(),
-            })?;
+        let (ws_stream, _) =
+            connect_async(&ws_url)
+                .await
+                .map_err(|e| TransportError::Connection {
+                    message: e.to_string(),
+                })?;
 
         let (mut write, mut read) = ws_stream.split();
 
@@ -161,21 +168,19 @@ impl RepoSubscription {
 
         while let Some(msg) = read.next().await {
             match msg {
-                Ok(Message::Binary(data)) => {
-                    match self.parse_event(&data) {
-                        Ok(event) => {
-                            trace!(?event, "Received event");
-                            let should_continue = handler.handle(event).await?;
-                            if !should_continue {
-                                info!("Handler requested stop");
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            warn!(error = %e, "Failed to parse event");
+                Ok(Message::Binary(data)) => match self.parse_event(&data) {
+                    Ok(event) => {
+                        trace!(?event, "Received event");
+                        let should_continue = handler.handle(event).await?;
+                        if !should_continue {
+                            info!("Handler requested stop");
+                            break;
                         }
                     }
-                }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to parse event");
+                    }
+                },
                 Ok(Message::Ping(data)) => {
                     trace!("Received ping");
                     if let Err(e) = write.send(Message::Pong(data)).await {

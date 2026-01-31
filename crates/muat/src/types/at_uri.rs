@@ -65,10 +65,12 @@ impl AtUri {
 
     fn parse(s: &str) -> Result<Self, Error> {
         // Format: at://<repo>/<collection>/<rkey>
-        let rest = s.strip_prefix("at://").ok_or_else(|| InvalidInputError::AtUri {
-            value: s.to_string(),
-            reason: "must start with 'at://'".to_string(),
-        })?;
+        let rest = s
+            .strip_prefix("at://")
+            .ok_or_else(|| InvalidInputError::AtUri {
+                value: s.to_string(),
+                reason: "must start with 'at://'".to_string(),
+            })?;
 
         // Split into parts
         let parts: Vec<&str> = rest.splitn(3, '/').collect();
@@ -143,10 +145,9 @@ mod tests {
 
     #[test]
     fn valid_at_uri() {
-        let uri = AtUri::new(
-            "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.post/3jui7kd54zh2y",
-        )
-        .unwrap();
+        let uri =
+            AtUri::new("at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.post/3jui7kd54zh2y")
+                .unwrap();
 
         assert_eq!(uri.repo().as_str(), "did:plc:z72i7hdynmk6r22z27h6tvur");
         assert_eq!(uri.collection().as_str(), "app.bsky.feed.post");

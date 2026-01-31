@@ -34,10 +34,7 @@ fn run_cli_success(args: &[&str]) -> String {
     let output = run_cli(args);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!(
-            "CLI command failed: {:?}\nstderr: {}",
-            args, stderr
-        );
+        panic!("CLI command failed: {:?}\nstderr: {}", args, stderr);
     }
     String::from_utf8_lossy(&output.stdout).to_string()
 }
@@ -78,9 +75,12 @@ fn test_login() {
     };
 
     let output = run_cli(&[
-        "pds", "login",
-        "--identifier", &identifier,
-        "--password", &password,
+        "pds",
+        "login",
+        "--identifier",
+        &identifier,
+        "--password",
+        &password,
     ]);
 
     assert!(
@@ -102,9 +102,12 @@ fn test_whoami() {
 
     // Ensure logged in
     run_cli(&[
-        "pds", "login",
-        "--identifier", &identifier,
-        "--password", &password,
+        "pds",
+        "login",
+        "--identifier",
+        &identifier,
+        "--password",
+        &password,
     ]);
 
     let stdout = run_cli_success(&["pds", "whoami"]);
@@ -120,9 +123,12 @@ fn test_refresh_token() {
 
     // Ensure logged in
     run_cli(&[
-        "pds", "login",
-        "--identifier", &identifier,
-        "--password", &password,
+        "pds",
+        "login",
+        "--identifier",
+        &identifier,
+        "--password",
+        &password,
     ]);
 
     let output = run_cli(&["pds", "refresh-token"]);
@@ -142,9 +148,12 @@ fn test_record_lifecycle() {
 
     // Ensure logged in
     run_cli(&[
-        "pds", "login",
-        "--identifier", &identifier,
-        "--password", &password,
+        "pds",
+        "login",
+        "--identifier",
+        &identifier,
+        "--password",
+        &password,
     ]);
 
     // Cleanup any existing test records
@@ -177,9 +186,12 @@ fn test_list_records_positional() {
 
     // Ensure logged in
     run_cli(&[
-        "pds", "login",
-        "--identifier", &identifier,
-        "--password", &password,
+        "pds",
+        "login",
+        "--identifier",
+        &identifier,
+        "--password",
+        &password,
     ]);
 
     // Test positional collection argument (the main point of G3)

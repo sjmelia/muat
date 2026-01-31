@@ -1,7 +1,7 @@
 //! XRPC HTTP client implementation.
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use serde::{de::DeserializeOwned, Serialize};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use serde::{Serialize, de::DeserializeOwned};
 use tracing::{debug, instrument, trace};
 
 use crate::error::{Error, ProtocolError};
@@ -152,11 +152,7 @@ impl XrpcClient {
     /// Make an authenticated XRPC procedure with no request body.
     /// Used for endpoints like refreshSession that don't accept a body.
     #[instrument(skip(self, token), fields(pds = %self.pds))]
-    pub async fn procedure_authed_no_body<R>(
-        &self,
-        method: &str,
-        token: &str,
-    ) -> Result<R, Error>
+    pub async fn procedure_authed_no_body<R>(&self, method: &str, token: &str) -> Result<R, Error>
     where
         R: DeserializeOwned,
     {

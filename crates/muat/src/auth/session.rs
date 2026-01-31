@@ -8,10 +8,10 @@ use crate::error::{AuthError, Error};
 use crate::repo::{ListRecordsOutput, Record};
 use crate::types::{AtUri, Did, Nsid, PdsUrl};
 use crate::xrpc::{
-    CreateRecordRequest, CreateRecordResponse, CreateSessionRequest, DeleteRecordRequest,
-    GetRecordQuery, GetRecordResponse, ListRecordsQuery, ListRecordsResponse,
-    RefreshSessionResponse, XrpcClient, CREATE_RECORD, CREATE_SESSION, DELETE_RECORD, GET_RECORD,
-    LIST_RECORDS, REFRESH_SESSION,
+    CREATE_RECORD, CREATE_SESSION, CreateRecordRequest, CreateRecordResponse, CreateSessionRequest,
+    DELETE_RECORD, DeleteRecordRequest, GET_RECORD, GetRecordQuery, GetRecordResponse,
+    LIST_RECORDS, ListRecordsQuery, ListRecordsResponse, REFRESH_SESSION, RefreshSessionResponse,
+    XrpcClient,
 };
 
 use super::credentials::Credentials;
@@ -202,7 +202,10 @@ impl Session {
     /// Handle the returned token securely. It can be used to obtain new access tokens.
     pub async fn export_refresh_token(&self) -> Option<String> {
         let tokens = self.inner.tokens.read().await;
-        tokens.refresh_token.as_ref().map(|t| t.as_str().to_string())
+        tokens
+            .refresh_token
+            .as_ref()
+            .map(|t| t.as_str().to_string())
     }
 
     // ========================================================================
@@ -235,7 +238,14 @@ impl Session {
             reverse: None,
         };
 
-        let token = self.inner.tokens.read().await.access_token.as_str().to_string();
+        let token = self
+            .inner
+            .tokens
+            .read()
+            .await
+            .access_token
+            .as_str()
+            .to_string();
 
         let response: ListRecordsResponse = self
             .inner
@@ -277,7 +287,14 @@ impl Session {
             cid: None,
         };
 
-        let token = self.inner.tokens.read().await.access_token.as_str().to_string();
+        let token = self
+            .inner
+            .tokens
+            .read()
+            .await
+            .access_token
+            .as_str()
+            .to_string();
 
         let response: GetRecordResponse = self
             .inner
@@ -318,7 +335,14 @@ impl Session {
             validate: None,
         };
 
-        let token = self.inner.tokens.read().await.access_token.as_str().to_string();
+        let token = self
+            .inner
+            .tokens
+            .read()
+            .await
+            .access_token
+            .as_str()
+            .to_string();
 
         let response: CreateRecordResponse = self
             .inner
@@ -346,7 +370,14 @@ impl Session {
             swap_commit: None,
         };
 
-        let token = self.inner.tokens.read().await.access_token.as_str().to_string();
+        let token = self
+            .inner
+            .tokens
+            .read()
+            .await
+            .access_token
+            .as_str()
+            .to_string();
 
         self.inner
             .client

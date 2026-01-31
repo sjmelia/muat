@@ -53,11 +53,7 @@ impl Nsid {
     /// For "app.bsky.feed.post", returns "feed.post".
     pub fn name(&self) -> &str {
         let parts: Vec<&str> = self.0.splitn(3, '.').collect();
-        if parts.len() >= 3 {
-            parts[2]
-        } else {
-            ""
-        }
+        if parts.len() >= 3 { parts[2] } else { "" }
     }
 
     /// Returns the full NSID string.
@@ -119,10 +115,7 @@ impl Nsid {
                 if !c.is_ascii_alphanumeric() && c != '-' {
                     return Err(InvalidInputError::Nsid {
                         value: s.to_string(),
-                        reason: format!(
-                            "segment '{}' contains invalid character '{}'",
-                            segment, c
-                        ),
+                        reason: format!("segment '{}' contains invalid character '{}'", segment, c),
                     }
                     .into());
                 }

@@ -268,7 +268,10 @@ async fn test_create_record_success() {
 
     let collection = Nsid::new("org.test.record").unwrap();
     let value = json!({"text": "New test record"});
-    let uri = session.create_record_raw(&collection, &value).await.unwrap();
+    let uri = session
+        .create_record_raw(&collection, &value)
+        .await
+        .unwrap();
 
     assert_eq!(uri.rkey().as_str(), "newrecord123");
 }
