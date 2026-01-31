@@ -59,10 +59,10 @@ fn cleanup_test_records() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
-        if let Ok(record) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(uri) = record["uri"].as_str() {
-                let _ = run_cli(&["pds", "delete-record", uri]);
-            }
+        if let Ok(record) = serde_json::from_str::<serde_json::Value>(line)
+            && let Some(uri) = record["uri"].as_str()
+        {
+            let _ = run_cli(&["pds", "delete-record", uri]);
         }
     }
 }

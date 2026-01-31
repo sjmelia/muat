@@ -11,7 +11,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 /// Helper to create a PDS URL from a mock server.
 fn mock_pds_url(server: &MockServer) -> PdsUrl {
     // For tests, we need to allow HTTP localhost
-    PdsUrl::new(&format!("http://127.0.0.1:{}", server.address().port())).unwrap()
+    PdsUrl::new(format!("http://127.0.0.1:{}", server.address().port())).unwrap()
 }
 
 // ============================================================================
