@@ -53,8 +53,11 @@ Before modifying code, understand these non-negotiable invariants:
 | Error types | `crates/muat/src/error.rs` |
 | CLI commands | `crates/atproto-cli/src/commands/pds/` |
 | Session storage | `crates/atproto-cli/src/session/` |
-| PRDs | `crates/*/docs/prd/` |
+| PRDs | `docs/prd/` |
+| Implementation plans | `docs/plans/` |
 | Invariants doc | `crates/muat/docs/Invariants.md` |
+| Mock PDS tests | `crates/muat/tests/mock_pds.rs` |
+| CLI integration tests | `crates/atproto-cli/tests/integration.rs` |
 
 ## Common Tasks
 
@@ -97,13 +100,31 @@ Err(Error::Other("bad DID"))
 # Check compilation
 cargo check --workspace
 
-# Run tests
+# Run all tests
 cargo test --workspace
 
 # Check specific crate
 cargo check -p muat
 cargo check -p atproto-cli
+
+# Run mock PDS tests (no external dependencies)
+cargo test -p muat --test mock_pds
+
+# Run CLI integration tests (requires credentials)
+export ATPROTO_TEST_IDENTIFIER="your.handle"
+export ATPROTO_TEST_PASSWORD="your-app-password"
+cargo test -p atproto-cli --test integration
 ```
+
+### Test Organization
+
+| Test Type | Location | Dependencies |
+|-----------|----------|--------------|
+| Unit tests | Inline in source files | None |
+| Mock PDS tests | `crates/muat/tests/mock_pds.rs` | `wiremock` |
+| CLI integration | `crates/atproto-cli/tests/integration.rs` | Real PDS credentials |
+
+Integration tests are skipped automatically if `ATPROTO_TEST_IDENTIFIER` is not set.
 
 ## Dependencies
 
@@ -147,6 +168,8 @@ Key dependencies and their purposes:
 
 ## Getting Help
 
-- PRDs: `crates/*/docs/prd/`
+- PRDs: `docs/prd/`
 - Invariants: `crates/muat/docs/Invariants.md`
 - Implementation plans: `docs/plans/`
+- muat README: `crates/muat/README.md`
+- CLI README: `crates/atproto-cli/README.md`

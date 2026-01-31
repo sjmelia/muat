@@ -8,10 +8,10 @@ Orbit provides foundational tools for interacting with AT Protocol Personal Data
 
 ### Crates
 
-| Crate | Description |
-|-------|-------------|
-| `muat` | Core AT Protocol library - authentication, session management, repo operations |
-| `atproto-cli` | CLI tool for PDS exploration and debugging |
+| Crate | Description | Docs |
+|-------|-------------|------|
+| `muat` | Core AT Protocol library - authentication, session management, repo operations | [README](crates/muat/README.md) |
+| `atproto-cli` | CLI tool for PDS exploration and debugging | [README](crates/atproto-cli/README.md) |
 
 ## Quick Start
 
@@ -35,10 +35,10 @@ atproto pds login --identifier alice.bsky.social --password your-app-password
 atproto pds whoami
 
 # List records in a collection
-atproto pds list-records --collection app.bsky.feed.post
+atproto pds list-records app.bsky.feed.post
 
 # Get a specific record
-atproto pds get-record --uri at://did:plc:xxx/app.bsky.feed.post/yyy
+atproto pds get-record at://did:plc:xxx/app.bsky.feed.post/yyy
 
 # Subscribe to the firehose
 atproto pds subscribe

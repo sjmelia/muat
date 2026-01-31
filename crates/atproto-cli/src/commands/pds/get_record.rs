@@ -10,19 +10,18 @@ use crate::session::storage;
 
 #[derive(Args, Debug)]
 pub struct GetRecordArgs {
-    /// AT URI of the record
-    #[arg(long)]
+    /// AT URI of the record (e.g., at://did:plc:.../app.bsky.feed.post/...)
     pub uri: Option<String>,
 
     /// Repository DID (defaults to session DID)
     #[arg(long)]
     pub repo: Option<String>,
 
-    /// Collection NSID
+    /// Collection NSID (alternative to URI)
     #[arg(long)]
     pub collection: Option<String>,
 
-    /// Record key
+    /// Record key (alternative to URI)
     #[arg(long)]
     pub rkey: Option<String>,
 }

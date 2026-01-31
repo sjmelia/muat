@@ -11,13 +11,12 @@ use crate::session::storage;
 
 #[derive(Args, Debug)]
 pub struct ListRecordsArgs {
+    /// Collection NSID (e.g., app.bsky.feed.post)
+    pub collection: String,
+
     /// Repository DID (defaults to session DID)
     #[arg(long)]
     pub repo: Option<String>,
-
-    /// Collection NSID
-    #[arg(long)]
-    pub collection: String,
 
     /// Maximum number of records to return
     #[arg(long)]

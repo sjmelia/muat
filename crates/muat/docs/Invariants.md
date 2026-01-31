@@ -278,6 +278,54 @@ The following invariants emerged during implementation and are now normative:
 
 ---
 
+### XRPC Request Bodies
+
+**Invariant**
+- Some endpoints require no request body at all (not even `{}`)
+- The `procedure_authed_no_body` method sends a POST with no body
+- Regular endpoints use `procedure_authed` with a JSON body
+
+**No-Body Endpoints**
+- `com.atproto.server.refreshSession` - expects no body, rejects even `{}`
+
+**Example**
+```rust
+// Correct: no body at all
+client.procedure_authed_no_body(REFRESH_SESSION, token).await?;
+
+// Wrong: sends {}, rejected by some PDS implementations
+client.procedure_authed(REFRESH_SESSION, &EmptyStruct{}, token).await?;
+```
+
+---
+
+### Token Refresh Protocol
+
+**Invariant**
+- Token refresh uses the refresh token in the `Authorization: Bearer` header
+- The request body MUST be empty (no body, not even `{}`)
+- The PDS returns new `accessJwt` and `refreshJwt` values
+- Both tokens must be updated atomically
+
+---
+
+### URL Construction
+
+**Invariant**
+- XRPC URLs must not contain double slashes (e.g., `//xrpc/`)
+- The `PdsUrl::xrpc_url()` method trims trailing slashes before constructing the URL
+- The `url` crate normalizes URLs to include trailing slashes, so explicit trimming is required
+
+**Example**
+```rust
+pub fn xrpc_url(&self, method: &str) -> String {
+    let base = self.0.as_str().trim_end_matches('/');
+    format!("{}/xrpc/{}", base, method)
+}
+```
+
+---
+
 ## Definition of Done
 
 - All public API boundaries use strong types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Session`)

@@ -58,6 +58,7 @@ pub struct CreateSessionResponse {
 }
 
 /// Response from refreshSession.
+/// Note: refreshSession takes no request body; the refresh token is in the Authorization header.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshSessionResponse {

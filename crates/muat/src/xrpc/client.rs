@@ -149,6 +149,30 @@ impl XrpcClient {
         }
     }
 
+    /// Make an authenticated XRPC procedure with no request body.
+    /// Used for endpoints like refreshSession that don't accept a body.
+    #[instrument(skip(self, token), fields(pds = %self.pds))]
+    pub async fn procedure_authed_no_body<R>(
+        &self,
+        method: &str,
+        token: &str,
+    ) -> Result<R, Error>
+    where
+        R: DeserializeOwned,
+    {
+        let url = self.pds.xrpc_url(method);
+        debug!(method, "XRPC authenticated procedure (no body)");
+
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .send()
+            .await?;
+
+        self.handle_response(response).await
+    }
+
     /// Create authorization headers for authenticated requests.
     fn auth_headers(&self, token: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();

@@ -161,7 +161,7 @@ impl Session {
         let response: RefreshSessionResponse = self
             .inner
             .client
-            .procedure_authed(REFRESH_SESSION, &(), &refresh_token)
+            .procedure_authed_no_body(REFRESH_SESSION, &refresh_token)
             .await?;
 
         // Update tokens
