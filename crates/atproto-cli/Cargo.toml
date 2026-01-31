@@ -25,5 +25,8 @@ anyhow = "1"
 colored = "2"
 chrono = { version = "0.4", features = ["serde"] }
 
+[build-dependencies]
+# No dependencies needed - build.rs uses only std
+
 [dev-dependencies]
 tempfile = "3"

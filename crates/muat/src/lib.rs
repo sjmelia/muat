@@ -24,6 +24,7 @@
 //! ```
 
 pub mod auth;
+pub mod backend;
 pub mod error;
 pub mod repo;
 pub mod types;
@@ -32,6 +33,7 @@ pub mod xrpc;
 // Re-export primary types at crate root for convenience
 pub use auth::{Credentials, Session};
 pub use error::Error;
+pub use repo::RecordValue;
 pub use types::{AtUri, Did, Nsid, PdsUrl, Rkey};
 
 /// Result type alias using the crate's Error type.

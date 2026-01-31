@@ -131,14 +131,34 @@ The central capability object for authenticated operations.
 
 ## Record Value Representation
 
-### Untyped records
-For endpoints that return record bodies, `muat` uses:
+### RecordValue Type
 
-- `serde_json::Value`
+For endpoints that return or accept record bodies, `muat` uses `RecordValue`:
 
-**Invariant**
-- Public APIs must not accept/return record payloads as `String` or raw bytes.
-- Parsing into typed lexicon structs is done *outside* `muat` (later layer).
+```rust
+pub struct RecordValue(serde_json::Value);
+```
+
+**Invariants**
+- `RecordValue` MUST be a JSON object (not array, string, null, etc.)
+- `RecordValue` MUST contain a `$type` field
+- The `$type` field MUST be a string (the record's lexicon NSID)
+- These invariants are enforced at:
+  - Construction time (`RecordValue::new()`)
+  - Deserialization time (custom `Deserialize` impl)
+- It is impossible to create an invalid `RecordValue`
+
+**API**
+- `RecordValue::new(value: Value) -> Result<Self>` - validate and wrap
+- `RecordValue::with_type(record_type: &str, value: Value) -> Result<Self>` - set $type and wrap
+- `record_type() -> &str` - access the $type field (infallible)
+- `as_value() -> &Value` - access inner value
+- `get(key: &str) -> Option<&Value>` - access fields
+
+**Rationale**
+- AT Protocol requires all records to have a `$type` field
+- Enforcing at the type level makes invalid states unrepresentable
+- Parsing into typed lexicon structs is done *outside* `muat` (later layer)
 
 ---
 
@@ -222,6 +242,17 @@ The following invariants emerged during implementation and are now normative:
 - Trailing slashes are removed during construction
 - HTTP allowed only for localhost/127.0.0.1/::1
 - HTTPS required for all other hosts
+- `file://` URLs are allowed for local filesystem PDS
+
+**URL Schemes**
+- `https://` - Network PDS (production)
+- `http://` - Network PDS (localhost only)
+- `file://` - Local filesystem PDS
+
+**file:// Specific**
+- `file://` URLs must have a path component
+- `is_local()` returns true for `file://` URLs
+- `to_file_path()` converts to `PathBuf` for file:// URLs
 
 ---
 
@@ -326,9 +357,52 @@ pub fn xrpc_url(&self, method: &str) -> String {
 
 ---
 
+### Filesystem PDS Backend
+
+**Directory Structure**
+```
+$ROOT/pds/
+├── accounts/<did>/account.json
+├── collections/<collection>/<did>/<rkey>.json
+└── firehose.jsonl
+```
+
+**Record Storage Invariants**
+- Records are stored as UTF-8 JSON files
+- File contains only the record value (not an envelope)
+- Path: `$ROOT/pds/collections/<collection>/<did>/<rkey>.json`
+- Parent directories are created as needed
+- Writes use atomic temp file + rename pattern
+
+**Firehose Invariants**
+- Firehose is append-only: `$ROOT/pds/firehose.jsonl`
+- Each line is a single JSON object with `uri`, `time`, `op` fields
+- Lines end with `\n`
+- Cross-process safety via exclusive file lock on `firehose.lock`
+- Lock scope is "append one line" only
+- Writes are followed by `fsync` for durability
+
+**Account Management Invariants**
+- Accounts have generated DIDs: `did:plc:<uuid-based>`
+- Account metadata stored in `$ROOT/pds/accounts/<did>/account.json`
+- Account removal can optionally delete associated records
+
+---
+
+### Version Reporting
+
+**Invariant**
+- `atproto --version` reports version derived from git state
+- Tagged releases: `atproto 0.2.0`
+- Development builds: `atproto 0.2.0-5-gabc1234` or `atproto abc1234`
+- Version is captured at compile time via build.rs
+
+---
+
 ## Definition of Done
 
-- All public API boundaries use strong types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Session`)
-- Untyped record payloads are `serde_json::Value`
+- All public API boundaries use strong types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `RecordValue`, `Session`)
+- Record payloads use `RecordValue` which guarantees `$type` field
 - All authenticated operations are methods on `Session`
 - Error type is unified and does not leak secrets
+- `file://` URLs enable local development without network PDS

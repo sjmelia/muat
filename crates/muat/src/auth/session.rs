@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, instrument};
 
 use crate::error::{AuthError, Error};
-use crate::repo::{ListRecordsOutput, Record};
+use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, PdsUrl};
 use crate::xrpc::{
     CREATE_RECORD, CREATE_SESSION, CreateRecordRequest, CreateRecordResponse, CreateSessionRequest,
@@ -260,7 +260,7 @@ impl Session {
                 Ok(Record {
                     uri: AtUri::new(&r.uri)?,
                     cid: r.cid,
-                    value: r.value,
+                    value: RecordValue::new(r.value)?,
                 })
             })
             .collect::<Result<Vec<_>, Error>>()?;
@@ -305,8 +305,30 @@ impl Session {
         Ok(Record {
             uri: AtUri::new(&response.uri)?,
             cid: response.cid,
-            value: response.value,
+            value: RecordValue::new(response.value)?,
         })
+    }
+
+    /// Create a new record in a collection with a validated [`RecordValue`].
+    ///
+    /// This is the preferred method for creating records as it ensures
+    /// the value contains a `$type` field at compile time.
+    ///
+    /// # Arguments
+    ///
+    /// * `collection` - The collection NSID
+    /// * `value` - The validated record value
+    ///
+    /// # Returns
+    ///
+    /// The AT URI of the created record.
+    #[instrument(skip(self, value), fields(did = %self.inner.did, %collection))]
+    pub async fn create_record(
+        &self,
+        collection: &Nsid,
+        value: &RecordValue,
+    ) -> Result<AtUri, Error> {
+        self.create_record_raw(collection, value.as_value()).await
     }
 
     /// Create a new record in a collection.

@@ -7,7 +7,7 @@ use crate::commands::pds::PdsCommand;
 /// AT Protocol CLI tool for PDS exploration.
 #[derive(Parser, Debug)]
 #[command(name = "atproto")]
-#[command(author, version, about, long_about = None)]
+#[command(author, version = env!("ATPROTO_VERSION"), about, long_about = None)]
 pub struct Cli {
     /// Increase verbosity (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]

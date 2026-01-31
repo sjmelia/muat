@@ -8,9 +8,10 @@ Core AT Protocol library for Rust.
 
 ## Features
 
-- **Strong typing** - Protocol types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Rkey`) are validated at construction
+- **Strong typing** - Protocol types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Rkey`, `RecordValue`) are validated at construction
 - **Session-centric API** - All authenticated operations require a `Session`
-- **Schema-agnostic** - Record values are `serde_json::Value`, not typed lexicons
+- **RecordValue type** - Guarantees record payloads are valid JSON objects with `$type` field
+- **Local PDS backend** - Use `file://` URLs for offline development without a network PDS
 - **Thread-safe** - `Session` uses `Arc<RwLock<...>>` internally for safe sharing
 - **Streaming support** - Subscribe to repository events via WebSocket
 
@@ -57,8 +58,9 @@ async fn main() -> Result<(), muat::Error> {
 | `Did` | Decentralized Identifier | `did:plc:z72i7hdynmk6r22z27h6tvur` |
 | `Nsid` | Namespaced Identifier (collection) | `app.bsky.feed.post` |
 | `AtUri` | AT Protocol URI | `at://did:plc:.../app.bsky.feed.post/...` |
-| `PdsUrl` | PDS base URL | `https://bsky.social` |
+| `PdsUrl` | PDS URL (network or local) | `https://bsky.social`, `file:///tmp/pds` |
 | `Rkey` | Record key | `3jui7kd54zh2y` |
+| `RecordValue` | Validated record payload | `{"$type": "app.bsky.feed.post", ...}` |
 | `Session` | Authenticated session | - |
 | `Credentials` | Login identifier + password | - |
 
@@ -87,11 +89,53 @@ let result = session.list_records(&did, &nsid, Some(limit), cursor).await?;
 // Get a specific record
 let record = session.get_record(&at_uri).await?;
 
-// Create a record (raw JSON)
+// Create a record with RecordValue (preferred)
+use muat::RecordValue;
+use serde_json::json;
+
+let value = RecordValue::with_type("org.example.record", json!({
+    "text": "Hello, world!"
+}))?;
+let uri = session.create_record(&nsid, &value).await?;
+
+// Create a record (raw JSON, for advanced use)
 let response = session.create_record_raw(&nsid, record_value).await?;
 
 // Delete a record
 session.delete_record(&at_uri).await?;
+```
+
+### Local Filesystem PDS
+
+For development and testing, you can use a local filesystem-backed PDS:
+
+```rust
+use muat::backend::file::FilePdsBackend;
+use muat::{Did, Nsid, RecordValue};
+use serde_json::json;
+
+// Create a backend
+let backend = FilePdsBackend::new("/tmp/test-pds");
+
+// Create a local account
+let did = backend.create_account("alice.local")?;
+
+// Create records
+let collection = Nsid::new("org.test.record")?;
+let value = RecordValue::new(json!({
+    "$type": "org.test.record",
+    "text": "test"
+}))?;
+
+let uri = backend.create_record(&did, &collection, &value, None).await?;
+```
+
+Directory structure:
+```
+$ROOT/pds/
+├── accounts/<did>/account.json
+├── collections/<collection>/<did>/<rkey>.json
+└── firehose.jsonl
 ```
 
 ### Streaming

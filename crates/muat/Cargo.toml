@@ -19,7 +19,11 @@ url = { version = "2", features = ["serde"] }
 thiserror = "2"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+fs2 = "0.4"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 wiremock = "0.6"
+tempfile = "3"

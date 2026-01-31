@@ -167,6 +167,10 @@ pub enum InvalidInputError {
     #[error("invalid CID '{value}': {reason}")]
     Cid { value: String, reason: String },
 
+    /// Invalid record value (missing $type, wrong type, etc.)
+    #[error("invalid record value: {reason}")]
+    RecordValue { reason: String },
+
     /// Generic invalid input.
     #[error("invalid input: {message}")]
     Other { message: String },

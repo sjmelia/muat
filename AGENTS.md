@@ -6,8 +6,13 @@ This document provides essential context for AI coding agents working on the Orb
 
 **Orbit** is a Rust toolkit for the AT Protocol (Bluesky's decentralized social network protocol). It provides:
 
-1. **muat** - Core protocol library implementing XRPC, authentication, and repository operations
+1. **muat** - Core protocol library implementing XRPC, authentication, repository operations, and local filesystem PDS backend
 2. **atproto-cli** - CLI tool for manual PDS exploration
+
+Key capabilities:
+- Network PDS support (HTTPS)
+- Local filesystem PDS support (`file://` URLs) for offline development
+- Version reporting with git commit SHA
 
 ## Quick Context
 
@@ -38,9 +43,15 @@ Before modifying code, understand these non-negotiable invariants:
 - Session files MUST have restricted permissions (0600)
 
 ### Schema Agnosticism
-- Record values are `serde_json::Value`
+- Record values use `RecordValue` (guarantees `$type` field, wraps `serde_json::Value`)
 - No lexicon-specific types in `muat`
-- Protocol layer does not interpret record contents
+- Protocol layer does not interpret record contents beyond `$type` presence
+
+### RecordValue Invariants
+- `RecordValue` MUST be a JSON object
+- `RecordValue` MUST contain a `$type` field
+- `$type` MUST be a string
+- These are enforced at deserialization time
 
 ## File Locations
 
@@ -50,14 +61,19 @@ Before modifying code, understand these non-negotiable invariants:
 | Session/Auth | `crates/muat/src/auth/` |
 | XRPC client | `crates/muat/src/xrpc/` |
 | Repo operations | `crates/muat/src/repo/` |
+| RecordValue | `crates/muat/src/repo/record_value.rs` |
+| PDS backends | `crates/muat/src/backend/` |
+| File backend | `crates/muat/src/backend/file.rs` |
 | Error types | `crates/muat/src/error.rs` |
 | CLI commands | `crates/atproto-cli/src/commands/pds/` |
 | Session storage | `crates/atproto-cli/src/session/` |
+| CLI build script | `crates/atproto-cli/build.rs` |
 | PRDs | `docs/prd/` |
 | Implementation plans | `docs/plans/` |
 | Invariants doc | `crates/muat/docs/Invariants.md` |
 | Mock PDS tests | `crates/muat/tests/mock_pds.rs` |
 | CLI integration tests | `crates/atproto-cli/tests/integration.rs` |
+| CI workflows | `.github/workflows/` |
 
 ## Common Tasks
 
@@ -138,6 +154,9 @@ Key dependencies and their purposes:
 | `clap` | CLI argument parsing |
 | `tracing` | Structured logging |
 | `thiserror` | Error type derivation |
+| `async-trait` | Async traits for PDS backend |
+| `fs2` | Cross-platform file locking for firehose |
+| `uuid` | DID generation for local accounts |
 
 ## Code Style
 

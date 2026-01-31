@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 use url::Url;
 
@@ -9,17 +10,32 @@ use crate::error::{Error, InvalidInputError};
 
 /// A validated PDS (Personal Data Server) URL.
 ///
-/// This type ensures the URL is absolute, uses HTTPS (or HTTP for localhost),
-/// and is properly normalized for XRPC endpoint construction.
+/// This type supports both network PDS URLs (HTTPS/HTTP) and local filesystem
+/// PDS URLs (`file://`).
+///
+/// # Network URLs
+///
+/// Network URLs must use HTTPS (or HTTP for localhost) and are used to
+/// connect to remote PDS instances.
+///
+/// # File URLs
+///
+/// File URLs (`file:///path/to/pds`) enable local-only development and testing
+/// without running a network PDS. Records are stored on the filesystem.
 ///
 /// # Example
 ///
 /// ```
 /// use muat::PdsUrl;
 ///
+/// // Network PDS
 /// let pds = PdsUrl::new("https://bsky.social").unwrap();
 /// assert_eq!(pds.xrpc_url("com.atproto.server.createSession"),
 ///            "https://bsky.social/xrpc/com.atproto.server.createSession");
+///
+/// // Local filesystem PDS
+/// let local = PdsUrl::new("file:///tmp/test-pds").unwrap();
+/// assert!(local.is_local());
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PdsUrl(Url);
@@ -74,6 +90,33 @@ impl PdsUrl {
         self.0.host_str()
     }
 
+    /// Returns the URL scheme (e.g., "https", "http", "file").
+    pub fn scheme(&self) -> &str {
+        self.0.scheme()
+    }
+
+    /// Returns true if this is a local filesystem PDS (file:// URL).
+    pub fn is_local(&self) -> bool {
+        self.0.scheme() == "file"
+    }
+
+    /// Returns true if this is a network PDS (http:// or https:// URL).
+    pub fn is_network(&self) -> bool {
+        let scheme = self.0.scheme();
+        scheme == "http" || scheme == "https"
+    }
+
+    /// Returns the filesystem path for file:// URLs.
+    ///
+    /// Returns `None` for non-file URLs.
+    pub fn to_file_path(&self) -> Option<PathBuf> {
+        if self.is_local() {
+            self.0.to_file_path().ok()
+        } else {
+            None
+        }
+    }
+
     fn validate(url: &Url, original: &str) -> Result<(), Error> {
         // Must be absolute
         if url.cannot_be_a_base() {
@@ -84,8 +127,22 @@ impl PdsUrl {
             .into());
         }
 
-        // Must be HTTPS (or HTTP for localhost)
         let scheme = url.scheme();
+
+        // Handle file:// URLs
+        if scheme == "file" {
+            // file:// URLs don't need a host, just a path
+            if url.path().is_empty() {
+                return Err(InvalidInputError::PdsUrl {
+                    value: original.to_string(),
+                    reason: "file:// URL must have a path".to_string(),
+                }
+                .into());
+            }
+            return Ok(());
+        }
+
+        // Must be HTTPS (or HTTP for localhost)
         let is_localhost = url
             .host_str()
             .is_some_and(|h| h == "localhost" || h == "127.0.0.1" || h == "::1");
@@ -98,7 +155,7 @@ impl PdsUrl {
             .into());
         }
 
-        // Must have a host
+        // Must have a host for network URLs
         if url.host_str().is_none() {
             return Err(InvalidInputError::PdsUrl {
                 value: original.to_string(),
@@ -193,5 +250,28 @@ mod tests {
     #[test]
     fn invalid_relative_url() {
         assert!(PdsUrl::new("/xrpc/method").is_err());
+    }
+
+    #[test]
+    fn valid_file_url() {
+        let pds = PdsUrl::new("file:///tmp/test-pds").unwrap();
+        assert!(pds.is_local());
+        assert!(!pds.is_network());
+        assert_eq!(pds.scheme(), "file");
+    }
+
+    #[test]
+    fn file_url_to_path() {
+        let pds = PdsUrl::new("file:///tmp/test-pds").unwrap();
+        let path = pds.to_file_path().unwrap();
+        assert_eq!(path, std::path::PathBuf::from("/tmp/test-pds"));
+    }
+
+    #[test]
+    fn network_url_not_local() {
+        let pds = PdsUrl::new("https://bsky.social").unwrap();
+        assert!(!pds.is_local());
+        assert!(pds.is_network());
+        assert!(pds.to_file_path().is_none());
     }
 }

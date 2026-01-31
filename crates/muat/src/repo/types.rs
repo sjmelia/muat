@@ -3,6 +3,8 @@
 use crate::types::AtUri;
 use serde::{Deserialize, Serialize};
 
+use super::RecordValue;
+
 /// A record from the repository.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
@@ -12,10 +14,11 @@ pub struct Record {
     /// The CID (content identifier) of this record.
     pub cid: String,
 
-    /// The record value as JSON.
+    /// The record value.
     ///
-    /// This is schema-agnostic; interpretation is left to higher layers.
-    pub value: serde_json::Value,
+    /// Guaranteed to be a JSON object with a `$type` field.
+    /// This is schema-agnostic beyond that; interpretation is left to higher layers.
+    pub value: RecordValue,
 }
 
 /// Output from listing records in a collection.

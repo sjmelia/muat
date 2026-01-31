@@ -21,17 +21,35 @@ The binary will be available as `atproto`.
 ## Quick Start
 
 ```bash
+# Check version
+atproto --version
+
 # Login to a PDS (use an app password, not your main password)
 atproto pds login --identifier your.handle.bsky.social --password your-app-password
 
 # Check your session
 atproto pds whoami
 
+# Create a record
+atproto pds create-record org.example.record --type org.example.record
+
 # List your posts
 atproto pds list-records app.bsky.feed.post
 
 # Subscribe to the firehose
 atproto pds subscribe
+```
+
+### Local Development
+
+For offline development, use a local filesystem-backed PDS:
+
+```bash
+# Create a local account
+atproto pds create-account alice.local --pds file://./pds
+
+# Remove a local account
+atproto pds remove-account did:plc:xxx --pds file://./pds --force
 ```
 
 ## Commands
@@ -68,7 +86,62 @@ Refresh the session tokens.
 atproto pds refresh-token
 ```
 
+### Account Management (Local PDS Only)
+
+#### `pds create-account`
+
+Create a new account in a local filesystem PDS.
+
+```bash
+atproto pds create-account <HANDLE> [--pds <URL>]
+```
+
+| Argument/Flag | Description | Default |
+|---------------|-------------|---------|
+| `<HANDLE>` | Handle for the new account | Required |
+| `--pds` | Local PDS URL | `file://./pds` |
+
+This command only works with `file://` URLs. For network PDS, use the web interface.
+
+#### `pds remove-account`
+
+Remove an account from a local filesystem PDS.
+
+```bash
+atproto pds remove-account <DID> [--pds <URL>] [--delete-records] [-f/--force]
+```
+
+| Argument/Flag | Description | Default |
+|---------------|-------------|---------|
+| `<DID>` | DID of the account to remove | Required |
+| `--pds` | Local PDS URL | `file://./pds` |
+| `--delete-records` | Also delete all records | false |
+| `-f`, `--force` | Skip confirmation | false |
+
 ### Record Operations
+
+#### `pds create-record`
+
+Create a new record in a collection.
+
+```bash
+atproto pds create-record <COLLECTION> --type <TYPE> [--json <FILE>]
+```
+
+| Argument/Flag | Description | Default |
+|---------------|-------------|---------|
+| `<COLLECTION>` | Collection NSID | Required |
+| `--type`, `-t` | Record type ($type field) | Required |
+| `--json` | JSON file with record data (use `-` for stdin) | Empty object |
+
+Examples:
+```bash
+# Create a simple record
+atproto pds create-record org.example.record --type org.example.record
+
+# Create a record with JSON data
+echo '{"text": "hello"}' | atproto pds create-record org.example.record --type org.example.record --json -
+```
 
 #### `pds list-records`
 
