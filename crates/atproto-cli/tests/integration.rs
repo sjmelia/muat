@@ -89,8 +89,8 @@ fn test_login() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("Logged in successfully") || stderr.contains("✓"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Logged in successfully") || stdout.contains("✓"));
 }
 
 #[test]
