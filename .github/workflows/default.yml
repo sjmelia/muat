@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  fmt_clippy:
-    name: Fmt & Clippy
+  fmt:
+    name: Fmt
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -20,10 +20,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust (rustfmt)
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -39,6 +39,32 @@ jobs:
       - name: Rustfmt (check)
         run: cargo fmt --all -- --check
 
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [fmt]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Clippy (warnings as errors)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
@@ -46,6 +72,7 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [fmt]
 
     steps:
       - name: Checkout
@@ -68,36 +95,11 @@ jobs:
       - name: Unit & local tests
         run: cargo test --workspace --all-targets --all-features
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build (debug)
-        run: cargo build --workspace --all-targets
-
   integration_tests:
     name: Integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [unit_tests]
 
     steps:
       - name: Checkout
