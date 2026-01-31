@@ -191,6 +191,96 @@ All authenticated endpoints are methods on `Session`, including:
 
 ---
 
+## Emergent Invariants (Implementation)
+
+The following invariants emerged during implementation and are now normative:
+
+### `Rkey` (Record Key)
+
+**Invariant**
+- Valid characters: `a-z`, `A-Z`, `0-9`, `.`, `-`, `_`, `~`
+- Length: 1-512 characters
+- Cannot be `.` or `..`
+- Typically a TID (timestamp identifier) but not validated as such
+
+---
+
+### Session Architecture
+
+**Implementation**
+- `Session` wraps `Arc<SessionInner>` for cheap cloning
+- Token storage uses `RwLock` for thread-safe refresh
+- Clone is shallow (reference counted)
+
+**Token Export**
+- `export_access_token()` and `export_refresh_token()` exist for persistence
+- These are async due to internal `RwLock`
+- Callers are responsible for secure storage
+
+---
+
+### PdsUrl Normalization
+
+**Invariant**
+- Trailing slashes are removed during construction
+- HTTP allowed only for localhost/127.0.0.1/::1
+- HTTPS required for all other hosts
+
+---
+
+### XRPC Client Internal
+
+**Architecture**
+- `XrpcClient` is internal to `muat` (not public)
+- All authenticated methods require token parameter
+- Response parsing handles XRPC error envelope format
+
+**Request Types**
+- `query`: GET request with query parameters
+- `procedure`: POST request with JSON body
+- Auth headers use `Bearer` scheme
+
+---
+
+### Streaming/Subscription
+
+**WebSocket URL Construction**
+- `https://` prefix converts to `wss://`
+- `http://` prefix converts to `ws://` (localhost only)
+- Path is `/xrpc/com.atproto.sync.subscribeRepos`
+
+**Event Types**
+- All event types (`CommitEvent`, `IdentityEvent`, etc.) derive both `Serialize` and `Deserialize`
+- This enables JSON output in CLI and future re-serialization needs
+
+**Handler Pattern**
+- Handler returns `bool` to continue/stop
+- Returning `false` gracefully terminates the subscription
+
+---
+
+### Debug Implementation
+
+**Invariant**
+- Types containing secrets (`Credentials`, `AccessToken`, `RefreshToken`, `Session`) MUST have custom `Debug` impls
+- Secret fields display as `[REDACTED]`
+- This prevents accidental logging via `{:?}` formatting
+
+---
+
+### Serde Patterns
+
+**Field Naming**
+- XRPC uses `camelCase` (e.g., `accessJwt`, `refreshJwt`)
+- Rust types use `snake_case`
+- `#[serde(rename_all = "camelCase")]` bridges the gap
+
+**Optional Fields**
+- Use `#[serde(default)]` for optional response fields
+- Use `#[serde(skip_serializing_if = "Option::is_none")]` for optional request fields
+
+---
+
 ## Definition of Done
 
 - All public API boundaries use strong types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Session`)
