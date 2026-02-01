@@ -44,7 +44,7 @@ use crate::Result;
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, PdsUrl};
 
-pub use file::FilePdsBackend;
+pub use file::{FilePdsBackend, FirehoseEvent, FirehoseOp, FirehoseWatcher};
 pub use xrpc::XrpcPdsBackend;
 
 /// Output from account creation.

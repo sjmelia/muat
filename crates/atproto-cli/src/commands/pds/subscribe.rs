@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;
+use futures_util::StreamExt;
 
 use muat::repo::RepoEvent;
 
@@ -36,93 +37,101 @@ pub async fn run(args: SubscribeArgs) -> Result<()> {
     let json_output = args.json;
     let filter = args.filter.clone();
 
-    let handler = move |event: RepoEvent| {
-        match &event {
-            RepoEvent::Commit(commit) => {
-                // Apply filter if specified
-                if let Some(ref prefix) = filter {
-                    let matches = commit.ops.iter().any(|op| op.path.starts_with(prefix));
-                    if !matches {
-                        return true; // continue but don't print
-                    }
-                }
+    let mut stream = session
+        .subscribe_repos_from(args.cursor)
+        .context("Failed to start subscription")?;
 
-                if json_output {
-                    if let Ok(json) = serde_json::to_string(&commit) {
-                        println!("{}", json);
-                    }
-                } else {
-                    println!(
-                        "{} {} {} ops @ seq {}",
-                        "COMMIT".green(),
-                        commit.repo.dimmed(),
-                        commit.ops.len(),
-                        commit.seq
-                    );
-                    for op in &commit.ops {
-                        let action = match op.action.as_str() {
-                            "create" => "CREATE".cyan(),
-                            "update" => "UPDATE".yellow(),
-                            "delete" => "DELETE".red(),
-                            other => other.normal(),
-                        };
-                        println!("  {} {}", action, op.path);
-                    }
-                }
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(event) => {
+                handle_event(&event, json_output, filter.as_deref());
             }
-            RepoEvent::Identity(identity) => {
-                if json_output {
-                    if let Ok(json) = serde_json::to_string(&identity) {
-                        println!("{}", json);
-                    }
-                } else {
-                    println!(
-                        "{} {} @ seq {}",
-                        "IDENTITY".blue(),
-                        identity.did.dimmed(),
-                        identity.seq
-                    );
-                }
-            }
-            RepoEvent::Handle(handle) => {
-                if json_output {
-                    if let Ok(json) = serde_json::to_string(&handle) {
-                        println!("{}", json);
-                    }
-                } else {
-                    println!(
-                        "{} {} -> {} @ seq {}",
-                        "HANDLE".magenta(),
-                        handle.did.dimmed(),
-                        handle.handle,
-                        handle.seq
-                    );
-                }
-            }
-            RepoEvent::Info(info) => {
-                if !json_output {
-                    eprintln!(
-                        "{} {} {}",
-                        "INFO".dimmed(),
-                        info.name,
-                        info.message.as_deref().unwrap_or("")
-                    );
-                }
-            }
-            RepoEvent::Unknown { kind } => {
-                if !json_output {
-                    eprintln!("{} {}", "UNKNOWN".dimmed(), kind);
-                }
+            Err(e) => {
+                eprintln!("{} {}", "ERROR".red(), e);
             }
         }
-        true // continue listening
-    };
-
-    if let Some(cursor) = args.cursor {
-        session.subscribe_repos_from(cursor, handler).await?;
-    } else {
-        session.subscribe_repos(handler).await?;
     }
 
     Ok(())
+}
+
+fn handle_event(event: &RepoEvent, json_output: bool, filter: Option<&str>) {
+    match event {
+        RepoEvent::Commit(commit) => {
+            // Apply filter if specified
+            if let Some(prefix) = filter {
+                let matches = commit.ops.iter().any(|op| op.path.starts_with(prefix));
+                if !matches {
+                    return; // don't print
+                }
+            }
+
+            if json_output {
+                if let Ok(json) = serde_json::to_string(&commit) {
+                    println!("{}", json);
+                }
+            } else {
+                println!(
+                    "{} {} {} ops @ seq {}",
+                    "COMMIT".green(),
+                    commit.repo.dimmed(),
+                    commit.ops.len(),
+                    commit.seq
+                );
+                for op in &commit.ops {
+                    let action = match op.action.as_str() {
+                        "create" => "CREATE".cyan(),
+                        "update" => "UPDATE".yellow(),
+                        "delete" => "DELETE".red(),
+                        other => other.normal(),
+                    };
+                    println!("  {} {}", action, op.path);
+                }
+            }
+        }
+        RepoEvent::Identity(identity) => {
+            if json_output {
+                if let Ok(json) = serde_json::to_string(&identity) {
+                    println!("{}", json);
+                }
+            } else {
+                println!(
+                    "{} {} @ seq {}",
+                    "IDENTITY".blue(),
+                    identity.did.dimmed(),
+                    identity.seq
+                );
+            }
+        }
+        RepoEvent::Handle(handle) => {
+            if json_output {
+                if let Ok(json) = serde_json::to_string(&handle) {
+                    println!("{}", json);
+                }
+            } else {
+                println!(
+                    "{} {} -> {} @ seq {}",
+                    "HANDLE".magenta(),
+                    handle.did.dimmed(),
+                    handle.handle,
+                    handle.seq
+                );
+            }
+        }
+        RepoEvent::Info(info) => {
+            if !json_output {
+                eprintln!(
+                    "{} {} {}",
+                    "INFO".dimmed(),
+                    info.name,
+                    info.message.as_deref().unwrap_or("")
+                );
+            }
+        }
+        RepoEvent::Unknown { kind } => {
+            if !json_output {
+                eprintln!("{} {}", "UNKNOWN".dimmed(), kind);
+            }
+        }
+    }
 }

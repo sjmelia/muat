@@ -17,9 +17,12 @@
 //! └── firehose.jsonl
 //! ```
 
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc as std_mpsc;
+
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -60,20 +63,23 @@ pub struct LocalAccount {
 }
 
 /// An event in the firehose log.
-#[derive(Debug, Serialize, Deserialize)]
-struct FirehoseEvent {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirehoseEvent {
     /// The AT URI of the affected record.
-    uri: String,
+    pub uri: String,
     /// ISO 8601 timestamp.
-    time: String,
+    pub time: String,
     /// The operation type.
-    op: FirehoseOp,
+    pub op: FirehoseOp,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// The type of firehose operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum FirehoseOp {
+pub enum FirehoseOp {
+    /// A record was created.
     Create,
+    /// A record was deleted.
     Delete,
 }
 
@@ -359,6 +365,207 @@ impl FilePdsBackend {
             cid,
             value,
         })
+    }
+
+    // ========================================================================
+    // Firehose Watching
+    // ========================================================================
+
+    /// Read all existing firehose events from the log file.
+    ///
+    /// This reads the entire firehose.jsonl file and returns all events.
+    /// Useful for catching up on events before starting to watch.
+    pub fn read_firehose(&self) -> Result<Vec<FirehoseEvent>> {
+        let firehose_path = self.firehose_path();
+
+        if !firehose_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let file = File::open(&firehose_path).map_err(|e| Error::Transport(e.into()))?;
+        let reader = BufReader::new(file);
+        let mut events = Vec::new();
+
+        for line in reader.lines() {
+            let line = line.map_err(|e| Error::Transport(e.into()))?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<FirehoseEvent>(&line) {
+                Ok(event) => events.push(event),
+                Err(e) => {
+                    debug!(error = %e, line = %line, "Failed to parse firehose event");
+                }
+            }
+        }
+
+        Ok(events)
+    }
+
+    /// Watch the firehose for new events.
+    ///
+    /// Returns a channel receiver that emits firehose events as they are written.
+    /// The watcher is returned so the caller can keep it alive.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use muat::backend::FilePdsBackend;
+    ///
+    /// # async fn example() -> Result<(), muat::Error> {
+    /// let backend = FilePdsBackend::new("/path/to/pds");
+    /// let (rx, _watcher) = backend.watch_firehose()?;
+    ///
+    /// // In an async context, poll rx for events
+    /// while let Ok(event) = rx.recv() {
+    ///     println!("Firehose event: {:?}", event);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn watch_firehose(
+        &self,
+    ) -> Result<(
+        std_mpsc::Receiver<FirehoseEvent>,
+        FirehoseWatcher,
+    )> {
+        let firehose_path = self.firehose_path();
+        let pds_dir = self.pds_dir();
+
+        // Ensure the pds directory exists
+        fs::create_dir_all(&pds_dir).map_err(|e| Error::Transport(e.into()))?;
+
+        // Channel for sending events
+        let (tx, rx) = std_mpsc::channel::<FirehoseEvent>();
+
+        // Track file position for tailing
+        let initial_pos = if firehose_path.exists() {
+            fs::metadata(&firehose_path)
+                .map(|m| m.len())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let firehose_path_clone = firehose_path.clone();
+        let tx_clone = tx.clone();
+        let position = std::sync::Arc::new(std::sync::Mutex::new(initial_pos));
+        let position_clone = position.clone();
+
+        // Create file watcher
+        let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                // Only process modify/create events
+                if !matches!(
+                    event.kind,
+                    notify::EventKind::Modify(_) | notify::EventKind::Create(_)
+                ) {
+                    return;
+                }
+
+                // Check if the event is for our firehose file
+                let is_firehose = event
+                    .paths
+                    .iter()
+                    .any(|p| p.file_name().is_some_and(|n| n == "firehose.jsonl"));
+
+                if !is_firehose {
+                    return;
+                }
+
+                // Read new lines from the firehose
+                if let Ok(mut file) = File::open(&firehose_path_clone) {
+                    let mut pos = position_clone.lock().unwrap();
+                    if file.seek(SeekFrom::Start(*pos)).is_ok() {
+                        let reader = BufReader::new(&file);
+                        for line in reader.lines() {
+                            if let Ok(line) = line {
+                                if line.trim().is_empty() {
+                                    continue;
+                                }
+                                if let Ok(event) = serde_json::from_str::<FirehoseEvent>(&line) {
+                                    let _ = tx_clone.send(event);
+                                }
+                            }
+                        }
+                        // Update position
+                        if let Ok(new_pos) = file.stream_position() {
+                            *pos = new_pos;
+                        }
+                    }
+                }
+            }
+        })
+        .map_err(|e| {
+            Error::InvalidInput(InvalidInputError::Other {
+                message: format!("Failed to create file watcher: {}", e),
+            })
+        })?;
+
+        // Start watching the pds directory
+        let mut watcher = watcher;
+        watcher
+            .watch(&pds_dir, RecursiveMode::NonRecursive)
+            .map_err(|e| {
+                Error::InvalidInput(InvalidInputError::Other {
+                    message: format!("Failed to watch directory: {}", e),
+                })
+            })?;
+
+        Ok((
+            rx,
+            FirehoseWatcher {
+                _watcher: watcher,
+                tx,
+                firehose_path,
+                position,
+            },
+        ))
+    }
+}
+
+/// A handle to a running firehose watcher.
+///
+/// Keep this alive to continue receiving firehose events.
+/// When dropped, the watcher stops.
+pub struct FirehoseWatcher {
+    _watcher: RecommendedWatcher,
+    tx: std_mpsc::Sender<FirehoseEvent>,
+    firehose_path: PathBuf,
+    position: std::sync::Arc<std::sync::Mutex<u64>>,
+}
+
+impl FirehoseWatcher {
+    /// Manually poll for new events.
+    ///
+    /// This is useful when the file watcher may not trigger (e.g., on some platforms).
+    /// Returns the number of new events found.
+    pub fn poll(&self) -> usize {
+        let mut count = 0;
+
+        if let Ok(mut file) = File::open(&self.firehose_path) {
+            let mut pos = self.position.lock().unwrap();
+            if file.seek(SeekFrom::Start(*pos)).is_ok() {
+                let reader = BufReader::new(&file);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        if let Ok(event) = serde_json::from_str::<FirehoseEvent>(&line) {
+                            if self.tx.send(event).is_ok() {
+                                count += 1;
+                            }
+                        }
+                    }
+                }
+                if let Ok(new_pos) = file.stream_position() {
+                    *pos = new_pos;
+                }
+            }
+        }
+
+        count
     }
 }
 
