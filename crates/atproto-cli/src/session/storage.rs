@@ -69,11 +69,13 @@ pub async fn load_session() -> Result<Option<Session>> {
     let pds = PdsUrl::new(&stored.pds).context("Invalid PDS URL in session")?;
     let did = Did::new(&stored.did).context("Invalid DID in session")?;
 
-    let session = Session::from_persisted(pds, did, stored.access_token, stored.refresh_token);
+    let session = Session::from_persisted(pds.clone(), did, stored.access_token, stored.refresh_token);
 
-    // Try to refresh the session
-    if let Err(e) = session.refresh().await {
-        tracing::warn!(error = %e, "Failed to refresh session, using existing tokens");
+    // Try to refresh the session (only for network PDS, file:// doesn't need refresh)
+    if pds.is_network() {
+        if let Err(e) = session.refresh().await {
+            tracing::warn!(error = %e, "Failed to refresh session, using existing tokens");
+        }
     }
 
     Ok(Some(session))
