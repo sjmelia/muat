@@ -29,10 +29,10 @@ use tracing::{debug, instrument};
 use uuid::Uuid;
 
 use super::{CreateAccountOutput, PdsBackend};
+use crate::Result;
 use crate::error::{Error, InvalidInputError, ProtocolError};
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, Rkey};
-use crate::Result;
 
 /// A filesystem-backed PDS implementation.
 ///
@@ -107,9 +107,7 @@ impl FilePdsBackend {
 
     /// Get the path for a specific account.
     fn account_path(&self, did: &Did) -> PathBuf {
-        self.accounts_dir()
-            .join(did.as_str())
-            .join("account.json")
+        self.accounts_dir().join(did.as_str()).join("account.json")
     }
 
     /// Get the path for a specific record.
@@ -168,7 +166,9 @@ impl FilePdsBackend {
             .open(&lock_path)
             .map_err(|e| Error::Transport(e.into()))?;
 
-        lock_file.lock_exclusive().map_err(|e| Error::Transport(e.into()))?;
+        lock_file
+            .lock_exclusive()
+            .map_err(|e| Error::Transport(e.into()))?;
 
         // Append event
         let event = FirehoseEvent {
@@ -183,8 +183,11 @@ impl FilePdsBackend {
             .open(&firehose_path)
             .map_err(|e| Error::Transport(e.into()))?;
 
-        let line = serde_json::to_string(&event)
-            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
+        let line = serde_json::to_string(&event).map_err(|e| {
+            Error::InvalidInput(InvalidInputError::Other {
+                message: e.to_string(),
+            })
+        })?;
 
         writeln!(file, "{}", line).map_err(|e| Error::Transport(e.into()))?;
         file.sync_data().map_err(|e| Error::Transport(e.into()))?;
@@ -226,8 +229,11 @@ impl FilePdsBackend {
         }
 
         // Write account file
-        let content = serde_json::to_string_pretty(&account)
-            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
+        let content = serde_json::to_string_pretty(&account).map_err(|e| {
+            Error::InvalidInput(InvalidInputError::Other {
+                message: e.to_string(),
+            })
+        })?;
         fs::write(&account_path, content).map_err(|e| Error::Transport(e.into()))?;
 
         debug!(did = %did, handle = %handle, "Created local account");
@@ -243,10 +249,12 @@ impl FilePdsBackend {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(&account_path)
-            .map_err(|e| Error::Transport(e.into()))?;
-        let account: LocalAccount = serde_json::from_str(&content)
-            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
+        let content = fs::read_to_string(&account_path).map_err(|e| Error::Transport(e.into()))?;
+        let account: LocalAccount = serde_json::from_str(&content).map_err(|e| {
+            Error::InvalidInput(InvalidInputError::Other {
+                message: e.to_string(),
+            })
+        })?;
 
         Ok(Some(account))
     }
@@ -274,7 +282,9 @@ impl FilePdsBackend {
             let collections_dir = self.collections_dir();
             if collections_dir.exists() {
                 // Walk through all collections and remove records for this DID
-                for entry in fs::read_dir(&collections_dir).map_err(|e| Error::Transport(e.into()))? {
+                for entry in
+                    fs::read_dir(&collections_dir).map_err(|e| Error::Transport(e.into()))?
+                {
                     let entry = entry.map_err(|e| Error::Transport(e.into()))?;
                     let did_dir = entry.path().join(did.as_str());
                     if did_dir.exists() {
@@ -304,8 +314,8 @@ impl FilePdsBackend {
             let account_file = entry.path().join("account.json");
 
             if account_file.exists() {
-                let content = fs::read_to_string(&account_file)
-                    .map_err(|e| Error::Transport(e.into()))?;
+                let content =
+                    fs::read_to_string(&account_file).map_err(|e| Error::Transport(e.into()))?;
                 if let Ok(account) = serde_json::from_str::<LocalAccount>(&content) {
                     accounts.push(account);
                 }
@@ -328,8 +338,11 @@ impl FilePdsBackend {
         }
 
         let content = fs::read_to_string(&path).map_err(|e| Error::Transport(e.into()))?;
-        let value: RecordValue = serde_json::from_str(&content)
-            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
+        let value: RecordValue = serde_json::from_str(&content).map_err(|e| {
+            Error::InvalidInput(InvalidInputError::Other {
+                message: e.to_string(),
+            })
+        })?;
 
         let cid = self.generate_cid(&content);
 
@@ -374,8 +387,11 @@ impl PdsBackend for FilePdsBackend {
         }
 
         // Serialize the record value
-        let content = serde_json::to_string_pretty(value.as_value())
-            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
+        let content = serde_json::to_string_pretty(value.as_value()).map_err(|e| {
+            Error::InvalidInput(InvalidInputError::Other {
+                message: e.to_string(),
+            })
+        })?;
 
         // Write atomically (temp file + rename)
         let temp_path = path.with_extension("tmp");
@@ -419,11 +435,7 @@ impl PdsBackend for FilePdsBackend {
             let mut entries: Vec<_> = fs::read_dir(&dir)
                 .map_err(|e| Error::Transport(e.into()))?
                 .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .is_some_and(|ext| ext == "json")
-                })
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
                 .collect();
 
             // Sort by filename (rkey)
@@ -600,12 +612,21 @@ mod tests {
             }))
             .unwrap();
             backend
-                .create_record(&did, &collection, &value, Some(&format!("rec{:03}", i)), None)
+                .create_record(
+                    &did,
+                    &collection,
+                    &value,
+                    Some(&format!("rec{:03}", i)),
+                    None,
+                )
                 .await
                 .unwrap();
         }
 
-        let result = backend.list_records(&did, &collection, Some(3), None, None).await.unwrap();
+        let result = backend
+            .list_records(&did, &collection, Some(3), None, None)
+            .await
+            .unwrap();
         assert_eq!(result.records.len(), 3);
         assert!(result.cursor.is_some());
     }
@@ -669,7 +690,10 @@ mod tests {
     async fn test_create_account_via_trait() {
         let (_tmp, backend) = create_test_backend();
 
-        let output = backend.create_account("test.local", None, None, None).await.unwrap();
+        let output = backend
+            .create_account("test.local", None, None, None)
+            .await
+            .unwrap();
         assert!(output.did.as_str().starts_with("did:plc:"));
         assert_eq!(output.handle, "test.local");
 
@@ -681,10 +705,16 @@ mod tests {
     async fn test_delete_account_via_trait() {
         let (_tmp, backend) = create_test_backend();
 
-        let output = backend.create_account("test.local", None, None, None).await.unwrap();
+        let output = backend
+            .create_account("test.local", None, None, None)
+            .await
+            .unwrap();
         assert!(backend.get_account(&output.did).unwrap().is_some());
 
-        backend.delete_account(&output.did, None, None).await.unwrap();
+        backend
+            .delete_account(&output.did, None, None)
+            .await
+            .unwrap();
         assert!(backend.get_account(&output.did).unwrap().is_none());
     }
 }

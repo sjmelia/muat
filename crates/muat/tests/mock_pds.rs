@@ -193,7 +193,12 @@ async fn test_list_records_success() {
     assert_eq!(result.records.len(), 2);
     assert_eq!(result.cursor, Some("next-page-cursor".to_string()));
     assert_eq!(
-        result.records[0].value.get("text").unwrap().as_str().unwrap(),
+        result.records[0]
+            .value
+            .get("text")
+            .unwrap()
+            .as_str()
+            .unwrap(),
         "Hello, world!"
     );
     assert_eq!(result.records[0].value.record_type(), "org.test.record");

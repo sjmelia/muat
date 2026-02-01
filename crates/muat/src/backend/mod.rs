@@ -196,10 +196,14 @@ impl PdsBackend for BackendKind {
     ) -> Result<AtUri> {
         match self {
             BackendKind::File(backend) => {
-                backend.create_record(repo, collection, value, rkey, token).await
+                backend
+                    .create_record(repo, collection, value, rkey, token)
+                    .await
             }
             BackendKind::Xrpc(backend) => {
-                backend.create_record(repo, collection, value, rkey, token).await
+                backend
+                    .create_record(repo, collection, value, rkey, token)
+                    .await
             }
         }
     }
@@ -221,10 +225,14 @@ impl PdsBackend for BackendKind {
     ) -> Result<ListRecordsOutput> {
         match self {
             BackendKind::File(backend) => {
-                backend.list_records(repo, collection, limit, cursor, token).await
+                backend
+                    .list_records(repo, collection, limit, cursor, token)
+                    .await
             }
             BackendKind::Xrpc(backend) => {
-                backend.list_records(repo, collection, limit, cursor, token).await
+                backend
+                    .list_records(repo, collection, limit, cursor, token)
+                    .await
             }
         }
     }
@@ -245,10 +253,14 @@ impl PdsBackend for BackendKind {
     ) -> Result<CreateAccountOutput> {
         match self {
             BackendKind::File(backend) => {
-                backend.create_account(handle, password, email, invite_code).await
+                backend
+                    .create_account(handle, password, email, invite_code)
+                    .await
             }
             BackendKind::Xrpc(backend) => {
-                backend.create_account(handle, password, email, invite_code).await
+                backend
+                    .create_account(handle, password, email, invite_code)
+                    .await
             }
         }
     }

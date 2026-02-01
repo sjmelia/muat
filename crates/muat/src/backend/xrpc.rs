@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use tracing::{debug, instrument};
 
 use super::{CreateAccountOutput, PdsBackend};
+use crate::Result;
 use crate::error::AuthError;
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, PdsUrl};
@@ -15,7 +16,6 @@ use crate::xrpc::{
     GET_RECORD, GetRecordQuery, GetRecordResponse, LIST_RECORDS, ListRecordsQuery,
     ListRecordsResponse, XrpcClient,
 };
-use crate::Result;
 
 /// Endpoint for account creation.
 const CREATE_ACCOUNT: &str = "com.atproto.server.createAccount";
@@ -126,10 +126,8 @@ impl PdsBackend for XrpcPdsBackend {
             cid: None,
         };
 
-        let response: GetRecordResponse = self
-            .client
-            .query_authed(GET_RECORD, &query, token)
-            .await?;
+        let response: GetRecordResponse =
+            self.client.query_authed(GET_RECORD, &query, token).await?;
 
         Ok(Record {
             uri: AtUri::new(&response.uri)?,
@@ -218,10 +216,8 @@ impl PdsBackend for XrpcPdsBackend {
             invite_code,
         };
 
-        let response: CreateAccountResponse = self
-            .client
-            .procedure(CREATE_ACCOUNT, &request)
-            .await?;
+        let response: CreateAccountResponse =
+            self.client.procedure(CREATE_ACCOUNT, &request).await?;
 
         Ok(CreateAccountOutput {
             did: Did::new(&response.did)?,

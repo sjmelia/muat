@@ -6,8 +6,8 @@
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use muat::backend::file::FilePdsBackend;
 use muat::PdsUrl;
+use muat::backend::file::FilePdsBackend;
 
 use crate::output;
 

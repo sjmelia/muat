@@ -320,7 +320,13 @@ impl Session {
         let token = self.get_token().await;
         self.inner
             .backend
-            .create_record(&self.inner.did, collection, &record_value, None, Some(&token))
+            .create_record(
+                &self.inner.did,
+                collection,
+                &record_value,
+                None,
+                Some(&token),
+            )
             .await
     }
 

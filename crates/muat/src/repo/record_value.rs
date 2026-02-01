@@ -198,7 +198,10 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, Error::InvalidInput(InvalidInputError::RecordValue { .. })));
+        assert!(matches!(
+            err,
+            Error::InvalidInput(InvalidInputError::RecordValue { .. })
+        ));
     }
 
     #[test]

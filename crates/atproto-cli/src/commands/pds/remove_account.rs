@@ -63,7 +63,11 @@ pub async fn run(args: RemoveAccountArgs) -> Result<()> {
         eprint!(
             "This will remove account {}{}. Continue? [y/N] ",
             args.did,
-            if args.delete_records { " and all its records" } else { "" }
+            if args.delete_records {
+                " and all its records"
+            } else {
+                ""
+            }
         );
         io::stderr().flush()?;
 

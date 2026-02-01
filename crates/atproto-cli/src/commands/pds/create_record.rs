@@ -42,8 +42,7 @@ pub async fn run(args: CreateRecordArgs) -> Result<()> {
                 .context("Failed to read from stdin")?;
             serde_json::from_str(&buf).context("Invalid JSON from stdin")?
         } else {
-            let content =
-                std::fs::read_to_string(path).context("Failed to read JSON file")?;
+            let content = std::fs::read_to_string(path).context("Failed to read JSON file")?;
             serde_json::from_str(&content).context("Invalid JSON in file")?
         }
     } else {
@@ -51,8 +50,8 @@ pub async fn run(args: CreateRecordArgs) -> Result<()> {
     };
 
     // Construct RecordValue with the specified type
-    let record_value = RecordValue::with_type(&args.record_type, base_value)
-        .context("Invalid record value")?;
+    let record_value =
+        RecordValue::with_type(&args.record_type, base_value).context("Invalid record value")?;
 
     // Create the record
     let uri = session
