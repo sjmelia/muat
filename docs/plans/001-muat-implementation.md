@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plan details the implementation of `muat`, the core AT Protocol library for Orbit. The library provides foundational protocol primitives with a session-centric API design.
+This plan details the implementation of `muat`, the core AT Protocol library. The library provides foundational protocol primitives with a session-centric API design.
 
 ## Architecture
 

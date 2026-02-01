@@ -1,12 +1,12 @@
-# Orbit
+# Muat
 
 A Rust toolkit for working with the AT Protocol (Bluesky's decentralized social network protocol).
 
 ## Overview
 
-Orbit provides foundational tools for interacting with AT Protocol Personal Data Servers (PDS). It's designed as a modular, layered architecture where protocol primitives are separate from application-specific behavior.
+Muat provides foundational tools for interacting with AT Protocol Personal Data Servers (PDS). It's designed as a modular, layered architecture where protocol primitives are separate from application-specific behavior.
 
-Orbit supports both **network PDS instances** (via HTTPS) and **local filesystem-backed PDS** (via `file://` URLs) for development and testing.
+Muat supports both **network PDS instances** (via HTTPS) and **local filesystem-backed PDS** (via `file://` URLs) for development and testing.
 
 ### Crates
 
@@ -210,7 +210,7 @@ This triggers the release workflow which:
 ### Project Structure
 
 ```
-orbit/
+muat/
 ├── Cargo.toml              # Workspace manifest
 ├── crates/
 │   ├── muat/               # Core protocol library

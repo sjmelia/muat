@@ -118,7 +118,7 @@ Introduce a CLI command for creating records that enforces `RecordValue` invaria
 Example (exact syntax is flexible):
 
 ```
-orbit record create \
+atproto record create \
   --collection org.example.foo \
   --type org.example.fooRecord \
   --json payload.json

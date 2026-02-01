@@ -137,7 +137,7 @@ Subscribes to repo events (firehose-style).
 **Inputs**
 - `--cursor <cursor>` (optional)
 - `--json` (optional; default: human-ish summaries)
-- `--filter <prefix>` (optional; eg `dev.orbit.`)
+- `--filter <prefix>` (optional; eg `dev.muat.`)
 
 **Outputs**
 - Prints commit events

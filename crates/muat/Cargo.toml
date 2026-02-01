@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Core AT Protocol library for Rust"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/orbit/orbit"
+repository = "https://github.com/sjmelia/muat"
 keywords = ["atproto", "bluesky", "decentralized"]
 categories = ["api-bindings", "network-programming"]
 

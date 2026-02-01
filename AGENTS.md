@@ -1,10 +1,10 @@
 # AGENTS.md - Context Bootstrap for AI Agents
 
-This document provides essential context for AI coding agents working on the Orbit codebase.
+This document provides essential context for AI coding agents working on the Muat codebase.
 
 ## Project Summary
 
-**Orbit** is a Rust toolkit for the AT Protocol (Bluesky's decentralized social network protocol). It provides:
+**Muat** is a Rust toolkit for the AT Protocol (Bluesky's decentralized social network protocol). It provides:
 
 1. **muat** - Core protocol library implementing XRPC, authentication, repository operations, and local filesystem PDS backend
 2. **atproto-cli** - CLI tool for manual PDS exploration
