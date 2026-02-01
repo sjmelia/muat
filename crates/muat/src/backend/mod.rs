@@ -298,7 +298,9 @@ impl PdsBackend for BackendKind {
 /// assert!(backend.is_xrpc());
 /// ```
 pub fn create_backend(pds: &PdsUrl) -> BackendKind {
-    if pds.is_local() && let Some(path) = pds.to_file_path() {
+    if pds.is_local()
+        && let Some(path) = pds.to_file_path()
+    {
         return BackendKind::File(FilePdsBackend::new(path));
     }
     BackendKind::Xrpc(XrpcPdsBackend::new(pds.clone()))
