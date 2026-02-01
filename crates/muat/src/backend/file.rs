@@ -5,17 +5,23 @@
 //!
 //! ## Directory Structure
 //!
+//! The layout is **repo-centric**: each DID owns a repository containing its collections.
+//!
 //! ```text
 //! $ROOT/pds/
 //! ├── accounts/
 //! │   └── <did>/
 //! │       └── account.json
-//! ├── collections/
-//! │   └── <collection>/
-//! │       └── <did>/
-//! │           └── <rkey>.json
+//! ├── repos/
+//! │   └── <did>/
+//! │       └── collections/
+//! │           └── <collection>/
+//! │               └── <rkey>.json
 //! └── firehose.jsonl
 //! ```
+//!
+//! This mirrors the AT Protocol data model where repositories belong to users (DIDs),
+//! and each repository contains collections of records.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
@@ -106,9 +112,9 @@ impl FilePdsBackend {
         self.pds_dir().join("accounts")
     }
 
-    /// Get the collections directory.
-    fn collections_dir(&self) -> PathBuf {
-        self.pds_dir().join("collections")
+    /// Get the repos directory.
+    fn repos_dir(&self) -> PathBuf {
+        self.pds_dir().join("repos")
     }
 
     /// Get the path for a specific account.
@@ -116,11 +122,15 @@ impl FilePdsBackend {
         self.accounts_dir().join(did.as_str()).join("account.json")
     }
 
+    /// Get the collections directory for a specific repo (DID).
+    fn repo_collections_dir(&self, did: &Did) -> PathBuf {
+        self.repos_dir().join(did.as_str()).join("collections")
+    }
+
     /// Get the path for a specific record.
     fn record_path(&self, collection: &Nsid, did: &Did, rkey: &str) -> PathBuf {
-        self.collections_dir()
+        self.repo_collections_dir(did)
             .join(collection.as_str())
-            .join(did.as_str())
             .join(format!("{}.json", rkey))
     }
 
@@ -283,20 +293,11 @@ impl FilePdsBackend {
         // Remove account directory
         fs::remove_dir_all(&account_dir).map_err(|e| Error::Transport(e.into()))?;
 
-        // Optionally remove records
+        // Optionally remove records (the entire repo directory for this DID)
         if delete_records {
-            let collections_dir = self.collections_dir();
-            if collections_dir.exists() {
-                // Walk through all collections and remove records for this DID
-                for entry in
-                    fs::read_dir(&collections_dir).map_err(|e| Error::Transport(e.into()))?
-                {
-                    let entry = entry.map_err(|e| Error::Transport(e.into()))?;
-                    let did_dir = entry.path().join(did.as_str());
-                    if did_dir.exists() {
-                        fs::remove_dir_all(&did_dir).map_err(|e| Error::Transport(e.into()))?;
-                    }
-                }
+            let repo_dir = self.repos_dir().join(did.as_str());
+            if repo_dir.exists() {
+                fs::remove_dir_all(&repo_dir).map_err(|e| Error::Transport(e.into()))?;
             }
         }
 
@@ -423,12 +424,7 @@ impl FilePdsBackend {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn watch_firehose(
-        &self,
-    ) -> Result<(
-        std_mpsc::Receiver<FirehoseEvent>,
-        FirehoseWatcher,
-    )> {
+    pub fn watch_firehose(&self) -> Result<(std_mpsc::Receiver<FirehoseEvent>, FirehoseWatcher)> {
         let firehose_path = self.firehose_path();
         let pds_dir = self.pds_dir();
 
@@ -440,9 +436,7 @@ impl FilePdsBackend {
 
         // Track file position for tailing
         let initial_pos = if firehose_path.exists() {
-            fs::metadata(&firehose_path)
-                .map(|m| m.len())
-                .unwrap_or(0)
+            fs::metadata(&firehose_path).map(|m| m.len()).unwrap_or(0)
         } else {
             0
         };
@@ -638,10 +632,7 @@ impl PdsBackend for FilePdsBackend {
         cursor: Option<&str>,
         _token: Option<&str>,
     ) -> Result<ListRecordsOutput> {
-        let dir = self
-            .collections_dir()
-            .join(collection.as_str())
-            .join(repo.as_str());
+        let dir = self.repo_collections_dir(repo).join(collection.as_str());
 
         let mut records = Vec::new();
         let limit = limit.unwrap_or(50) as usize;

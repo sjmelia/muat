@@ -15,7 +15,7 @@ Core AT Protocol library for Rust.
 - **Local PDS backend** - Use `file://` URLs for offline development without a network PDS
 - **Network PDS backend** - `XrpcPdsBackend` implements the trait for network operations
 - **Thread-safe** - `Session` uses `Arc<RwLock<...>>` internally for safe sharing
-- **Streaming support** - Subscribe to repository events via WebSocket
+- **Uniform streaming** - `subscribe_repos()` returns an async `Stream` for both file:// and https:// backends
 
 ## Installation
 
@@ -185,11 +185,11 @@ let value = RecordValue::new(json!({
 let uri = backend.create_record(&did, &collection, &value, None, None).await?;
 ```
 
-Directory structure:
+Directory structure (repo-centric):
 ```
 $ROOT/pds/
 ├── accounts/<did>/account.json
-├── collections/<collection>/<did>/<rkey>.json
+├── repos/<did>/collections/<collection>/<rkey>.json
 └── firehose.jsonl
 ```
 
@@ -210,19 +210,30 @@ let record = backend.get_record(&uri, Some(&access_token)).await?;
 
 ### Streaming
 
+Subscribe to repository events using the uniform stream API (works for both `file://` and `https://` PDS URLs):
+
 ```rust
-// Subscribe to repository events
-session.subscribe_repos(|event| async move {
-    match event {
-        RepoEvent::Commit(commit) => println!("Commit: {}", commit.repo),
-        RepoEvent::Identity(id) => println!("Identity: {}", id.did),
-        RepoEvent::Handle(h) => println!("Handle: {} -> {}", h.did, h.handle),
-        RepoEvent::Account(a) => println!("Account: {}", a.did),
-        RepoEvent::Tombstone(t) => println!("Tombstone: {}", t.did),
+use futures_util::StreamExt;
+use muat::repo::RepoEvent;
+
+// Get a stream of events (uniform for file:// and https://)
+let mut stream = session.subscribe_repos()?;
+
+// Process events
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(RepoEvent::Commit(commit)) => {
+            for op in commit.ops {
+                println!("{}:{} {}", commit.repo, op.path, op.action);
+            }
+        }
+        Ok(event) => println!("Event: {:?}", event),
+        Err(e) => eprintln!("Error: {}", e),
     }
-    true // Return false to stop subscription
-}).await?;
+}
 ```
+
+The stream integrates naturally with `tokio::select!` for concurrent event handling.
 
 ## Error Handling
 

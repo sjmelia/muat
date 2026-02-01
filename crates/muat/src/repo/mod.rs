@@ -9,7 +9,6 @@ mod types;
 
 pub use record_value::RecordValue;
 pub use streaming::{
-    CommitEvent, CommitOperation, HandleEvent, IdentityEvent, InfoEvent, RepoEvent,
-    RepoEventStream,
+    CommitEvent, CommitOperation, HandleEvent, IdentityEvent, InfoEvent, RepoEvent, RepoEventStream,
 };
 pub use types::{ListRecordsOutput, Record};

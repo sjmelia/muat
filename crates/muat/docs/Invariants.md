@@ -270,20 +270,32 @@ The following invariants emerged during implementation and are now normative:
 
 ---
 
-### Streaming/Subscription
+### Streaming/Subscription (PRD-008)
 
-**WebSocket URL Construction**
-- `https://` prefix converts to `wss://`
-- `http://` prefix converts to `ws://` (localhost only)
+**Uniform Stream API**
+- `session.subscribe_repos()` returns `RepoEventStream` for BOTH file:// and https:// PDS URLs
+- The same `RepoEvent` type is used for both backends
+- Consumers do NOT need to check which backend is in use
+
+**RepoEventStream Invariants**
+- `RepoEventStream` implements `Stream<Item = Result<RepoEvent, Error>>`
+- Works with `futures_util::StreamExt::next()`
+- Integrates naturally with `tokio::select!`
+- Stream terminates (returns `None`) when connection closes or file watcher stops
+
+**File-based Subscription**
+- Uses `notify` crate to watch `firehose.jsonl`
+- Converts `FirehoseEvent` to `RepoEvent::Commit`
+- Tails from current file position (no replay)
+
+**Network Subscription**
+- WebSocket URL construction: `https://` → `wss://`, `http://` → `ws://` (localhost only)
 - Path is `/xrpc/com.atproto.sync.subscribeRepos`
+- Deserializes CBOR frames to `RepoEvent` variants
 
 **Event Types**
 - All event types (`CommitEvent`, `IdentityEvent`, etc.) derive both `Serialize` and `Deserialize`
 - This enables JSON output in CLI and future re-serialization needs
-
-**Handler Pattern**
-- Handler returns `bool` to continue/stop
-- Returning `false` gracefully terminates the subscription
 
 ---
 
@@ -357,20 +369,22 @@ pub fn xrpc_url(&self, method: &str) -> String {
 
 ---
 
-### Filesystem PDS Backend
+### Filesystem PDS Backend (PRD-008 updates)
 
-**Directory Structure**
+**Directory Structure (Repo-Centric)**
 ```
 $ROOT/pds/
 ├── accounts/<did>/account.json
-├── collections/<collection>/<did>/<rkey>.json
+├── repos/<did>/collections/<collection>/<rkey>.json
 └── firehose.jsonl
 ```
+
+The layout is **repo-centric**: each DID owns a repository containing its collections. This mirrors the AT Protocol data model where repositories belong to users.
 
 **Record Storage Invariants**
 - Records are stored as UTF-8 JSON files
 - File contains only the record value (not an envelope)
-- Path: `$ROOT/pds/collections/<collection>/<did>/<rkey>.json`
+- Path: `$ROOT/pds/repos/<did>/collections/<collection>/<rkey>.json`
 - Parent directories are created as needed
 - Writes use atomic temp file + rename pattern
 
@@ -385,7 +399,7 @@ $ROOT/pds/
 **Account Management Invariants**
 - Accounts have generated DIDs: `did:plc:<uuid-based>`
 - Account metadata stored in `$ROOT/pds/accounts/<did>/account.json`
-- Account removal can optionally delete associated records
+- Account removal optionally deletes all data in `$ROOT/pds/repos/<did>/`
 
 ---
 

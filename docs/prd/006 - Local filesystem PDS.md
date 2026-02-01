@@ -70,15 +70,17 @@ The `file://` URL MUST resolve to a base directory (the “PDS root”).
 
 ## Filesystem Layout (Normative)
 
+> **Note**: PRD-008 supersedes this section. The directory layout is now **repo-centric**.
+
 Given a PDS root directory `$ROOT`, the local store MUST use the following structure:
 
-* `$ROOT/pds/collections/<collection>/<did>/<rkey>.json`
+* `$ROOT/pds/repos/<did>/collections/<collection>/<rkey>.json`
 * `$ROOT/pds/firehose.jsonl`
 
 Where:
 
+* `<did>` is the DID string (repository owner)
 * `<collection>` is the collection NSID string (as used in record URIs)
-* `<did>` is the DID string as used in record URIs (directory name)
 * `<rkey>` is the record key (file name without extension)
 
 Records MUST be stored as UTF-8 JSON files.
@@ -166,9 +168,9 @@ Because firehose is a single shared append-only file, writers MUST:
 
 When `muat` is configured with a `file://` PDS URL, any operation that would create a record on a network PDS MUST instead:
 
-1. Determine the record’s target path:
+1. Determine the record's target path:
 
-   * `$ROOT/pds/collections/<collection>/<did>/<rkey>.json`
+   * `$ROOT/pds/repos/<did>/collections/<collection>/<rkey>.json`
 2. Create directories as needed.
 3. Write the record JSON file.
 
