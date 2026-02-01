@@ -233,7 +233,9 @@ impl PdsBackend for XrpcPdsBackend {
         password: Option<&str>,
     ) -> Result<()> {
         let token = token.ok_or(AuthError::SessionExpired)?;
-        let password = password.ok_or(AuthError::InvalidCredentials)?;
+        let password = password.ok_or(AuthError::InvalidCredentials(
+            "password required".to_string(),
+        ))?;
 
         debug!(did = %did, "Deleting account via XRPC");
 

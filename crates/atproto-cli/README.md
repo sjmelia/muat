@@ -271,6 +271,6 @@ MIT OR Apache-2.0
 
 ## See Also
 
-- [Muat workspace README](../../README.md)
+- [µat workspace README](../../README.md)
 - [muat library](../muat/README.md)
 - [AT Protocol Specification](https://atproto.com/specs/atp)

@@ -79,8 +79,8 @@ impl From<reqwest::Error> for Error {
 #[derive(Debug, Error)]
 pub enum AuthError {
     /// Invalid credentials provided.
-    #[error("invalid credentials")]
-    InvalidCredentials,
+    #[error("invalid credentials: {0}")]
+    InvalidCredentials(String),
 
     /// Session has expired.
     #[error("session expired")]

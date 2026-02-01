@@ -325,6 +325,14 @@ impl FilePdsBackend {
         Ok(accounts)
     }
 
+    /// Find an account by handle.
+    ///
+    /// Returns the account if found, or None if no account with the given handle exists.
+    pub fn find_account_by_handle(&self, handle: &str) -> Result<Option<LocalAccount>> {
+        let accounts = self.list_accounts()?;
+        Ok(accounts.into_iter().find(|a| a.handle == handle))
+    }
+
     /// Helper to get a record without token (for internal use in list_records).
     async fn get_record_internal(&self, uri: &AtUri) -> Result<Record> {
         let path = self.record_path(uri.collection(), uri.repo(), uri.rkey().as_str());

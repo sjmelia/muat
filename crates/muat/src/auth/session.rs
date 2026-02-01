@@ -84,6 +84,40 @@ impl Session {
         let client = XrpcClient::new(pds.clone());
         let backend = create_backend(pds);
 
+        // For file-based backends, look up the account locally instead of making HTTP requests
+        if let Some(file_backend) = backend.as_file() {
+            let identifier = credentials.identifier();
+
+            // Try to find account by handle
+            let account = file_backend
+                .find_account_by_handle(identifier)?
+                .ok_or_else(|| {
+                    AuthError::InvalidCredentials(format!("Account '{}' not found", identifier))
+                })?;
+
+            let did = Did::new(&account.did)?;
+
+            // For file backends, tokens are not used but we need non-empty values
+            let access_token = AccessToken::new("file-backend-token".to_string());
+            let refresh_token = Some(RefreshToken::new("file-backend-refresh".to_string()));
+
+            debug!(did = %did, "File-based session created successfully");
+
+            return Ok(Self {
+                inner: Arc::new(SessionInner {
+                    did,
+                    pds: pds.clone(),
+                    client,
+                    backend,
+                    tokens: RwLock::new(SessionTokens {
+                        access_token,
+                        refresh_token,
+                    }),
+                }),
+            });
+        }
+
+        // Network-based login via XRPC
         let request = CreateSessionRequest {
             identifier: credentials.identifier(),
             password: credentials.password(),

@@ -1,12 +1,12 @@
-# Muat
+# µat
 
 A Rust toolkit for working with the AT Protocol (Bluesky's decentralized social network protocol).
 
 ## Overview
 
-Muat provides foundational tools for interacting with AT Protocol Personal Data Servers (PDS). It's designed as a modular, layered architecture where protocol primitives are separate from application-specific behavior.
+µat provides foundational tools for interacting with AT Protocol Personal Data Servers (PDS). It's designed as a modular, layered architecture where protocol primitives are separate from application-specific behavior.
 
-Muat supports both **network PDS instances** (via HTTPS) and **local filesystem-backed PDS** (via `file://` URLs) for development and testing.
+µat supports both **network PDS instances** (via HTTPS) and **local filesystem-backed PDS** (via `file://` URLs) for development and testing.
 
 ### Crates
 

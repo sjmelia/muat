@@ -182,6 +182,14 @@ impl BackendKind {
     pub fn is_xrpc(&self) -> bool {
         matches!(self, BackendKind::Xrpc(_))
     }
+
+    /// Returns a reference to the file backend if this is a file-based backend.
+    pub fn as_file(&self) -> Option<&FilePdsBackend> {
+        match self {
+            BackendKind::File(backend) => Some(backend),
+            BackendKind::Xrpc(_) => None,
+        }
+    }
 }
 
 #[async_trait]
