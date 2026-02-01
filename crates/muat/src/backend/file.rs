@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
-use super::PdsBackend;
+use super::{CreateAccountOutput, PdsBackend};
 use crate::error::{Error, InvalidInputError, ProtocolError};
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, Rkey};
@@ -38,6 +38,11 @@ use crate::Result;
 ///
 /// This backend stores records as JSON files in a directory structure,
 /// and maintains an append-only firehose log for event streaming.
+///
+/// ## Token Handling
+///
+/// This backend does not require authentication. Token parameters are
+/// accepted for API compatibility but are ignored.
 #[derive(Debug, Clone)]
 pub struct FilePdsBackend {
     root: PathBuf,
@@ -191,14 +196,17 @@ impl FilePdsBackend {
     }
 
     // ========================================================================
-    // Account Management
+    // Account Management (Direct Methods)
     // ========================================================================
 
     /// Create a new account in the local PDS.
     ///
     /// Returns the generated DID for the new account.
+    ///
+    /// This is a convenience method that bypasses the `PdsBackend` trait.
+    /// For trait-based usage, use [`PdsBackend::create_account`].
     #[instrument(skip(self))]
-    pub fn create_account(&self, handle: &str) -> Result<Did> {
+    pub fn create_account_local(&self, handle: &str) -> Result<Did> {
         // Generate a local DID
         let uuid_str = Uuid::new_v4().to_string().replace("-", "");
         let did_str = format!("did:plc:{}", &uuid_str[..24]);
@@ -306,6 +314,31 @@ impl FilePdsBackend {
 
         Ok(accounts)
     }
+
+    /// Helper to get a record without token (for internal use in list_records).
+    async fn get_record_internal(&self, uri: &AtUri) -> Result<Record> {
+        let path = self.record_path(uri.collection(), uri.repo(), uri.rkey().as_str());
+
+        if !path.exists() {
+            return Err(Error::Protocol(ProtocolError::new(
+                404,
+                Some("RecordNotFound".to_string()),
+                Some(format!("Record {} not found", uri)),
+            )));
+        }
+
+        let content = fs::read_to_string(&path).map_err(|e| Error::Transport(e.into()))?;
+        let value: RecordValue = serde_json::from_str(&content)
+            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
+
+        let cid = self.generate_cid(&content);
+
+        Ok(Record {
+            uri: uri.clone(),
+            cid,
+            value,
+        })
+    }
 }
 
 // Implement conversion from io::Error to TransportError
@@ -319,13 +352,14 @@ impl From<std::io::Error> for crate::error::TransportError {
 
 #[async_trait]
 impl PdsBackend for FilePdsBackend {
-    #[instrument(skip(self, value))]
+    #[instrument(skip(self, value, _token))]
     async fn create_record(
         &self,
         repo: &Did,
         collection: &Nsid,
         value: &RecordValue,
         rkey: Option<&str>,
+        _token: Option<&str>,
     ) -> Result<AtUri> {
         let rkey = rkey
             .map(|s| s.to_string())
@@ -359,38 +393,19 @@ impl PdsBackend for FilePdsBackend {
         Ok(uri)
     }
 
-    #[instrument(skip(self))]
-    async fn get_record(&self, uri: &AtUri) -> Result<Record> {
-        let path = self.record_path(uri.collection(), uri.repo(), uri.rkey().as_str());
-
-        if !path.exists() {
-            return Err(Error::Protocol(ProtocolError::new(
-                404,
-                Some("RecordNotFound".to_string()),
-                Some(format!("Record {} not found", uri)),
-            )));
-        }
-
-        let content = fs::read_to_string(&path).map_err(|e| Error::Transport(e.into()))?;
-        let value: RecordValue = serde_json::from_str(&content)
-            .map_err(|e| Error::InvalidInput(InvalidInputError::Other { message: e.to_string() }))?;
-
-        let cid = self.generate_cid(&content);
-
-        Ok(Record {
-            uri: uri.clone(),
-            cid,
-            value,
-        })
+    #[instrument(skip(self, _token))]
+    async fn get_record(&self, uri: &AtUri, _token: Option<&str>) -> Result<Record> {
+        self.get_record_internal(uri).await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, _token))]
     async fn list_records(
         &self,
         repo: &Did,
         collection: &Nsid,
         limit: Option<u32>,
         cursor: Option<&str>,
+        _token: Option<&str>,
     ) -> Result<ListRecordsOutput> {
         let dir = self
             .collections_dir()
@@ -443,7 +458,7 @@ impl PdsBackend for FilePdsBackend {
                 };
 
                 let uri = AtUri::from_parts(repo.clone(), collection.clone(), rkey_validated);
-                if let Ok(record) = self.get_record(&uri).await {
+                if let Ok(record) = self.get_record_internal(&uri).await {
                     records.push(record);
                 }
             }
@@ -458,8 +473,8 @@ impl PdsBackend for FilePdsBackend {
         Ok(ListRecordsOutput { records, cursor })
     }
 
-    #[instrument(skip(self))]
-    async fn delete_record(&self, uri: &AtUri) -> Result<()> {
+    #[instrument(skip(self, _token))]
+    async fn delete_record(&self, uri: &AtUri, _token: Option<&str>) -> Result<()> {
         let path = self.record_path(uri.collection(), uri.repo(), uri.rkey().as_str());
 
         if path.exists() {
@@ -472,6 +487,32 @@ impl PdsBackend for FilePdsBackend {
         }
 
         Ok(())
+    }
+
+    #[instrument(skip(self, _password))]
+    async fn create_account(
+        &self,
+        handle: &str,
+        _password: Option<&str>,
+        _email: Option<&str>,
+        _invite_code: Option<&str>,
+    ) -> Result<CreateAccountOutput> {
+        let did = self.create_account_local(handle)?;
+        Ok(CreateAccountOutput {
+            did,
+            handle: handle.to_string(),
+        })
+    }
+
+    #[instrument(skip(self, _token, _password))]
+    async fn delete_account(
+        &self,
+        did: &Did,
+        _token: Option<&str>,
+        _password: Option<&str>,
+    ) -> Result<()> {
+        // For file backend, delete the account and all associated records
+        self.remove_account(did, true)
     }
 }
 
@@ -491,7 +532,7 @@ mod tests {
     fn test_create_account() {
         let (_tmp, backend) = create_test_backend();
 
-        let did = backend.create_account("test.local").unwrap();
+        let did = backend.create_account_local("test.local").unwrap();
         assert!(did.as_str().starts_with("did:plc:"));
 
         let account = backend.get_account(&did).unwrap().unwrap();
@@ -502,7 +543,7 @@ mod tests {
     fn test_remove_account() {
         let (_tmp, backend) = create_test_backend();
 
-        let did = backend.create_account("test.local").unwrap();
+        let did = backend.create_account_local("test.local").unwrap();
         assert!(backend.get_account(&did).unwrap().is_some());
 
         backend.remove_account(&did, false).unwrap();
@@ -513,8 +554,8 @@ mod tests {
     fn test_list_accounts() {
         let (_tmp, backend) = create_test_backend();
 
-        backend.create_account("alice.local").unwrap();
-        backend.create_account("bob.local").unwrap();
+        backend.create_account_local("alice.local").unwrap();
+        backend.create_account_local("bob.local").unwrap();
 
         let accounts = backend.list_accounts().unwrap();
         assert_eq!(accounts.len(), 2);
@@ -533,13 +574,13 @@ mod tests {
         .unwrap();
 
         let uri = backend
-            .create_record(&did, &collection, &value, Some("testrkey"))
+            .create_record(&did, &collection, &value, Some("testrkey"), None)
             .await
             .unwrap();
 
         assert_eq!(uri.rkey().as_str(), "testrkey");
 
-        let record = backend.get_record(&uri).await.unwrap();
+        let record = backend.get_record(&uri, None).await.unwrap();
         assert_eq!(record.value.record_type(), "org.test.record");
         assert_eq!(record.value.get("text").unwrap(), "hello");
     }
@@ -559,12 +600,12 @@ mod tests {
             }))
             .unwrap();
             backend
-                .create_record(&did, &collection, &value, Some(&format!("rec{:03}", i)))
+                .create_record(&did, &collection, &value, Some(&format!("rec{:03}", i)), None)
                 .await
                 .unwrap();
         }
 
-        let result = backend.list_records(&did, &collection, Some(3), None).await.unwrap();
+        let result = backend.list_records(&did, &collection, Some(3), None, None).await.unwrap();
         assert_eq!(result.records.len(), 3);
         assert!(result.cursor.is_some());
     }
@@ -582,18 +623,18 @@ mod tests {
         .unwrap();
 
         let uri = backend
-            .create_record(&did, &collection, &value, Some("todelete"))
+            .create_record(&did, &collection, &value, Some("todelete"), None)
             .await
             .unwrap();
 
         // Record exists
-        assert!(backend.get_record(&uri).await.is_ok());
+        assert!(backend.get_record(&uri, None).await.is_ok());
 
         // Delete it
-        backend.delete_record(&uri).await.unwrap();
+        backend.delete_record(&uri, None).await.unwrap();
 
         // Record should be gone
-        assert!(backend.get_record(&uri).await.is_err());
+        assert!(backend.get_record(&uri, None).await.is_err());
     }
 
     #[tokio::test]
@@ -608,7 +649,7 @@ mod tests {
         .unwrap();
 
         backend
-            .create_record(&did, &collection, &value, None)
+            .create_record(&did, &collection, &value, None, None)
             .await
             .unwrap();
 
@@ -622,5 +663,28 @@ mod tests {
         // Verify it's valid JSON
         let event: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
         assert!(event["uri"].as_str().unwrap().starts_with("at://"));
+    }
+
+    #[tokio::test]
+    async fn test_create_account_via_trait() {
+        let (_tmp, backend) = create_test_backend();
+
+        let output = backend.create_account("test.local", None, None, None).await.unwrap();
+        assert!(output.did.as_str().starts_with("did:plc:"));
+        assert_eq!(output.handle, "test.local");
+
+        let account = backend.get_account(&output.did).unwrap().unwrap();
+        assert_eq!(account.handle, "test.local");
+    }
+
+    #[tokio::test]
+    async fn test_delete_account_via_trait() {
+        let (_tmp, backend) = create_test_backend();
+
+        let output = backend.create_account("test.local", None, None, None).await.unwrap();
+        assert!(backend.get_account(&output.did).unwrap().is_some());
+
+        backend.delete_account(&output.did, None, None).await.unwrap();
+        assert!(backend.get_account(&output.did).unwrap().is_none());
     }
 }

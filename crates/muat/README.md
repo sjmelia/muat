@@ -11,7 +11,9 @@ Core AT Protocol library for Rust.
 - **Strong typing** - Protocol types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Rkey`, `RecordValue`) are validated at construction
 - **Session-centric API** - All authenticated operations require a `Session`
 - **RecordValue type** - Guarantees record payloads are valid JSON objects with `$type` field
+- **Unified backend abstraction** - `PdsBackend` trait provides a single interface for record operations
 - **Local PDS backend** - Use `file://` URLs for offline development without a network PDS
+- **Network PDS backend** - `XrpcPdsBackend` implements the trait for network operations
 - **Thread-safe** - `Session` uses `Arc<RwLock<...>>` internally for safe sharing
 - **Streaming support** - Subscribe to repository events via WebSocket
 
@@ -78,6 +80,7 @@ session.refresh().await?;
 // Access session info
 session.did()      // Returns &Did
 session.pds()      // Returns &PdsUrl
+session.backend()  // Returns &BackendKind (underlying backend)
 ```
 
 ### Repository Operations
@@ -105,12 +108,64 @@ let response = session.create_record_raw(&nsid, record_value).await?;
 session.delete_record(&at_uri).await?;
 ```
 
+## Backend Architecture
+
+`muat` provides a unified `PdsBackend` trait for record operations. This allows the same code to work with both network and filesystem backends.
+
+### Backend Selection
+
+Use `create_backend()` to automatically select the appropriate backend based on the PDS URL scheme:
+
+```rust
+use muat::backend::{create_backend, PdsBackend};
+use muat::PdsUrl;
+
+// File-based backend for local development
+let file_pds = PdsUrl::new("file:///tmp/my-pds")?;
+let file_backend = create_backend(&file_pds);
+assert!(file_backend.is_file());
+
+// Network backend for production
+let network_pds = PdsUrl::new("https://bsky.social")?;
+let network_backend = create_backend(&network_pds);
+assert!(network_backend.is_xrpc());
+```
+
+### Using Backends Directly
+
+For unauthenticated or local operations, you can use backends directly:
+
+```rust
+use muat::backend::{create_backend, PdsBackend};
+use muat::{PdsUrl, Did, Nsid, RecordValue};
+use serde_json::json;
+
+// Create a file backend for local testing
+let pds = PdsUrl::new("file:///tmp/test-pds")?;
+let backend = create_backend(&pds);
+
+// Create an account (local backends only)
+let output = backend.create_account("alice.local", None, None, None).await?;
+println!("Created account: {}", output.did);
+
+// Create a record (no token needed for file backend)
+let collection = Nsid::new("org.test.record")?;
+let value = RecordValue::new(json!({
+    "$type": "org.test.record",
+    "text": "test"
+}))?;
+let uri = backend.create_record(&output.did, &collection, &value, None, None).await?;
+
+// List records
+let result = backend.list_records(&output.did, &collection, Some(10), None, None).await?;
+```
+
 ### Local Filesystem PDS
 
 For development and testing, you can use a local filesystem-backed PDS:
 
 ```rust
-use muat::backend::file::FilePdsBackend;
+use muat::backend::FilePdsBackend;
 use muat::{Did, Nsid, RecordValue};
 use serde_json::json;
 
@@ -118,7 +173,7 @@ use serde_json::json;
 let backend = FilePdsBackend::new("/tmp/test-pds");
 
 // Create a local account
-let did = backend.create_account("alice.local")?;
+let did = backend.create_account_local("alice.local")?;
 
 // Create records
 let collection = Nsid::new("org.test.record")?;
@@ -127,7 +182,7 @@ let value = RecordValue::new(json!({
     "text": "test"
 }))?;
 
-let uri = backend.create_record(&did, &collection, &value, None).await?;
+let uri = backend.create_record(&did, &collection, &value, None, None).await?;
 ```
 
 Directory structure:
@@ -136,6 +191,21 @@ $ROOT/pds/
 ├── accounts/<did>/account.json
 ├── collections/<collection>/<did>/<rkey>.json
 └── firehose.jsonl
+```
+
+### Network PDS Backend
+
+For network operations without a full Session:
+
+```rust
+use muat::backend::XrpcPdsBackend;
+use muat::PdsUrl;
+
+let pds = PdsUrl::new("https://bsky.social")?;
+let backend = XrpcPdsBackend::new(pds);
+
+// Network operations require a token
+let record = backend.get_record(&uri, Some(&access_token)).await?;
 ```
 
 ### Streaming
@@ -179,10 +249,11 @@ match session.get_record(&uri).await {
 ## Design Principles
 
 1. **Session-first capability** - Authenticated operations require a `Session`; no free functions for authenticated endpoints
-2. **Strong types at API boundaries** - Use `Nsid`, `AtUri`, `Did`, etc., not `String`
-3. **Schema-agnostic record values** - The protocol layer does not interpret lexicon payloads
-4. **Explicitness over magic** - No hidden global state, no silent retries, no implicit defaults
-5. **Secrets are never logged** - Custom `Debug` implementations redact sensitive fields
+2. **Unified backend abstraction** - `PdsBackend` trait provides a single interface for record operations across all implementations
+3. **Strong types at API boundaries** - Use `Nsid`, `AtUri`, `Did`, etc., not `String`
+4. **Schema-agnostic record values** - The protocol layer does not interpret lexicon payloads
+5. **Explicitness over magic** - No hidden global state, no silent retries, no implicit defaults
+6. **Secrets are never logged** - Custom `Debug` implementations redact sensitive fields
 
 ## Testing
 

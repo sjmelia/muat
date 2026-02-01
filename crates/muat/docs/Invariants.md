@@ -399,6 +399,47 @@ $ROOT/pds/
 
 ---
 
+### PDS Backend Unification (PRD-007)
+
+**Overview**
+`PdsBackend` is the unified interface for record operations. Both network (XRPC) and filesystem implementations use this trait.
+
+**Backend Types**
+- `FilePdsBackend`: Filesystem-backed storage for local development
+- `XrpcPdsBackend`: Network-backed storage via XRPC protocol
+- `BackendKind`: Concrete enum holding either backend type (avoids dynamic dispatch)
+
+**Token Handling Invariants**
+- Backend methods accept an optional `token` parameter for authenticated operations
+- Network backends (`XrpcPdsBackend`) REQUIRE a token for authenticated operations
+- Filesystem backends (`FilePdsBackend`) IGNORE the token parameter
+- `Session` supplies tokens automatically when delegating to the backend
+
+**Backend Selection Invariants**
+- `create_backend(&PdsUrl)` selects the appropriate backend based on URL scheme
+- `file://` URLs → `FilePdsBackend`
+- `http://` and `https://` URLs → `XrpcPdsBackend`
+- Selection is deterministic and based solely on the URL scheme
+
+**Session Integration**
+- `Session` holds a `BackendKind` internally
+- Record operations on `Session` delegate to the backend with the access token
+- `Session::backend()` exposes the underlying backend for advanced use
+- `Session` remains the public entry point for authenticated operations
+
+**Account Management**
+- `PdsBackend::create_account()` creates accounts (no token required for local, varies for network)
+- `PdsBackend::delete_account()` deletes accounts (requires token and password for network)
+- Filesystem backend generates `did:plc:<uuid>` identifiers locally
+- Network backend calls the XRPC `createAccount`/`deleteAccount` endpoints
+
+**Concrete Backend Storage**
+- Session uses a concrete enum (`BackendKind`) rather than `dyn PdsBackend`
+- This avoids dynamic dispatch and keeps types explicit
+- The set of backends is closed and known at compile time
+
+---
+
 ## Definition of Done
 
 - All public API boundaries use strong types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `RecordValue`, `Session`)
@@ -406,3 +447,5 @@ $ROOT/pds/
 - All authenticated operations are methods on `Session`
 - Error type is unified and does not leak secrets
 - `file://` URLs enable local development without network PDS
+- `PdsBackend` trait provides unified interface for both file and network backends
+- `Session` delegates record operations to the backend internally

@@ -268,7 +268,10 @@ async fn test_create_record_success() {
         .unwrap();
 
     let collection = Nsid::new("org.test.record").unwrap();
-    let value = json!({"text": "New test record"});
+    let value = json!({
+        "$type": "org.test.record",
+        "text": "New test record"
+    });
     let uri = session
         .create_record_raw(&collection, &value)
         .await

@@ -38,7 +38,7 @@ pub async fn run(args: CreateAccountArgs) -> Result<()> {
 
     let backend = FilePdsBackend::new(&path);
     let did = backend
-        .create_account(&args.handle)
+        .create_account_local(&args.handle)
         .context("Failed to create account")?;
 
     output::field("DID", did.as_str());

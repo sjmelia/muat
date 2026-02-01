@@ -4,14 +4,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument};
 
+use crate::backend::{BackendKind, PdsBackend, create_backend};
 use crate::error::{AuthError, Error};
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, PdsUrl};
 use crate::xrpc::{
-    CREATE_RECORD, CREATE_SESSION, CreateRecordRequest, CreateRecordResponse, CreateSessionRequest,
-    DELETE_RECORD, DeleteRecordRequest, GET_RECORD, GetRecordQuery, GetRecordResponse,
-    LIST_RECORDS, ListRecordsQuery, ListRecordsResponse, REFRESH_SESSION, RefreshSessionResponse,
-    XrpcClient,
+    CREATE_SESSION, CreateSessionRequest, REFRESH_SESSION, RefreshSessionResponse, XrpcClient,
 };
 
 use super::credentials::Credentials;
@@ -22,6 +20,13 @@ use super::tokens::{AccessToken, RefreshToken};
 /// All authenticated AT Protocol operations require a `Session`.
 /// Sessions are obtained via [`Session::login()`] and can be refreshed
 /// via [`Session::refresh()`].
+///
+/// # Backend Integration
+///
+/// Internally, `Session` uses a [`PdsBackend`](crate::backend::PdsBackend) to perform
+/// record operations. This provides a unified interface for both network and filesystem
+/// PDS implementations. Record methods on `Session` delegate to the backend, automatically
+/// supplying the authentication token.
 ///
 /// # Thread Safety
 ///
@@ -52,6 +57,7 @@ struct SessionInner {
     did: Did,
     pds: PdsUrl,
     client: XrpcClient,
+    backend: BackendKind,
     tokens: RwLock<SessionTokens>,
 }
 
@@ -76,6 +82,7 @@ impl Session {
         info!("Creating new session");
 
         let client = XrpcClient::new(pds.clone());
+        let backend = create_backend(pds);
 
         let request = CreateSessionRequest {
             identifier: credentials.identifier(),
@@ -96,6 +103,7 @@ impl Session {
                 did,
                 pds: pds.clone(),
                 client,
+                backend,
                 tokens: RwLock::new(SessionTokens {
                     access_token,
                     refresh_token,
@@ -122,12 +130,14 @@ impl Session {
         refresh_token: Option<String>,
     ) -> Self {
         let client = XrpcClient::new(pds.clone());
+        let backend = create_backend(&pds);
 
         Self {
             inner: Arc::new(SessionInner {
                 did,
                 pds,
                 client,
+                backend,
                 tokens: RwLock::new(SessionTokens {
                     access_token: AccessToken::new(access_token),
                     refresh_token: refresh_token.map(RefreshToken::new),
@@ -185,6 +195,14 @@ impl Session {
         &self.inner.pds
     }
 
+    /// Returns a reference to the underlying backend.
+    ///
+    /// This is useful for advanced operations or when you need direct
+    /// access to the backend without going through Session methods.
+    pub fn backend(&self) -> &BackendKind {
+        &self.inner.backend
+    }
+
     /// Export the current access token for persistence.
     ///
     /// # Security
@@ -208,8 +226,14 @@ impl Session {
             .map(|t| t.as_str().to_string())
     }
 
+    /// Get the current access token (internal use).
+    async fn get_token(&self) -> String {
+        let tokens = self.inner.tokens.read().await;
+        tokens.access_token.as_str().to_string()
+    }
+
     // ========================================================================
-    // Repository Operations
+    // Repository Operations (delegated to backend)
     // ========================================================================
 
     /// List records in a collection.
@@ -229,46 +253,11 @@ impl Session {
         cursor: Option<&str>,
     ) -> Result<ListRecordsOutput, Error> {
         debug!("Listing records");
-
-        let query = ListRecordsQuery {
-            repo: repo.as_str(),
-            collection: collection.as_str(),
-            limit,
-            cursor,
-            reverse: None,
-        };
-
-        let token = self
-            .inner
-            .tokens
-            .read()
+        let token = self.get_token().await;
+        self.inner
+            .backend
+            .list_records(repo, collection, limit, cursor, Some(&token))
             .await
-            .access_token
-            .as_str()
-            .to_string();
-
-        let response: ListRecordsResponse = self
-            .inner
-            .client
-            .query_authed(LIST_RECORDS, &query, &token)
-            .await?;
-
-        let records = response
-            .records
-            .into_iter()
-            .map(|r| {
-                Ok(Record {
-                    uri: AtUri::new(&r.uri)?,
-                    cid: r.cid,
-                    value: RecordValue::new(r.value)?,
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        Ok(ListRecordsOutput {
-            records,
-            cursor: response.cursor,
-        })
     }
 
     /// Get a single record by its AT URI.
@@ -279,34 +268,8 @@ impl Session {
     #[instrument(skip(self), fields(did = %self.inner.did, %uri))]
     pub async fn get_record(&self, uri: &AtUri) -> Result<Record, Error> {
         debug!("Getting record");
-
-        let query = GetRecordQuery {
-            repo: uri.repo().as_str(),
-            collection: uri.collection().as_str(),
-            rkey: uri.rkey().as_str(),
-            cid: None,
-        };
-
-        let token = self
-            .inner
-            .tokens
-            .read()
-            .await
-            .access_token
-            .as_str()
-            .to_string();
-
-        let response: GetRecordResponse = self
-            .inner
-            .client
-            .query_authed(GET_RECORD, &query, &token)
-            .await?;
-
-        Ok(Record {
-            uri: AtUri::new(&response.uri)?,
-            cid: response.cid,
-            value: RecordValue::new(response.value)?,
-        })
+        let token = self.get_token().await;
+        self.inner.backend.get_record(uri, Some(&token)).await
     }
 
     /// Create a new record in a collection with a validated [`RecordValue`].
@@ -328,7 +291,12 @@ impl Session {
         collection: &Nsid,
         value: &RecordValue,
     ) -> Result<AtUri, Error> {
-        self.create_record_raw(collection, value.as_value()).await
+        debug!("Creating record");
+        let token = self.get_token().await;
+        self.inner
+            .backend
+            .create_record(&self.inner.did, collection, value, None, Some(&token))
+            .await
     }
 
     /// Create a new record in a collection.
@@ -347,32 +315,13 @@ impl Session {
         collection: &Nsid,
         value: &serde_json::Value,
     ) -> Result<AtUri, Error> {
-        debug!("Creating record");
-
-        let request = CreateRecordRequest {
-            repo: self.inner.did.as_str(),
-            collection: collection.as_str(),
-            record: value,
-            rkey: None,
-            validate: None,
-        };
-
-        let token = self
-            .inner
-            .tokens
-            .read()
+        debug!("Creating record (raw)");
+        let record_value = RecordValue::new(value.clone())?;
+        let token = self.get_token().await;
+        self.inner
+            .backend
+            .create_record(&self.inner.did, collection, &record_value, None, Some(&token))
             .await
-            .access_token
-            .as_str()
-            .to_string();
-
-        let response: CreateRecordResponse = self
-            .inner
-            .client
-            .procedure_authed(CREATE_RECORD, &request, &token)
-            .await?;
-
-        AtUri::new(&response.uri)
     }
 
     /// Delete a record by its AT URI.
@@ -383,28 +332,8 @@ impl Session {
     #[instrument(skip(self), fields(did = %self.inner.did, %uri))]
     pub async fn delete_record(&self, uri: &AtUri) -> Result<(), Error> {
         debug!("Deleting record");
-
-        let request = DeleteRecordRequest {
-            repo: uri.repo().as_str(),
-            collection: uri.collection().as_str(),
-            rkey: uri.rkey().as_str(),
-            swap_record: None,
-            swap_commit: None,
-        };
-
-        let token = self
-            .inner
-            .tokens
-            .read()
-            .await
-            .access_token
-            .as_str()
-            .to_string();
-
-        self.inner
-            .client
-            .procedure_authed_no_response(DELETE_RECORD, &request, &token)
-            .await
+        let token = self.get_token().await;
+        self.inner.backend.delete_record(uri, Some(&token)).await
     }
 }
 
@@ -414,6 +343,7 @@ impl std::fmt::Debug for Session {
         f.debug_struct("Session")
             .field("did", &self.inner.did)
             .field("pds", &self.inner.pds)
+            .field("backend", &self.inner.backend)
             .field("tokens", &"[REDACTED]")
             .finish()
     }
