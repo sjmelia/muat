@@ -40,7 +40,7 @@ The canonical invariants live in `crates/muat-core/docs/Invariants.md`. Please r
 | Implementation plans  | `docs/plans/`                                                    |
 | Invariants doc        | `crates/muat-core/docs/Invariants.md`                            |
 | Mock PDS tests        | `crates/muat-xrpc/tests/mock_pds.rs`                             |
-| CLI integration tests | `crates/atproto-cli/tests/integration.rs`                        |
+| CLI integration tests | `crates/atproto-cli/tests/file_pds.rs`, `crates/atproto-cli/tests/bluesky_pds.rs` |
 | CI workflows          | `.github/workflows/`                                             |
 
 ## Common Tasks
@@ -84,8 +84,8 @@ Err(Error::Other("bad DID"))
 # Check compilation
 cargo check --workspace
 
-# Run all tests
-cargo test --workspace
+# Run unit tests (no integration tests)
+cargo test --workspace --lib --bins
 
 # Check specific crate
 cargo check -p muat-core
@@ -96,10 +96,13 @@ cargo check -p atproto-cli
 # Run mock PDS tests (no external dependencies)
 cargo test -p muat-xrpc --test mock_pds
 
-# Run CLI integration tests (requires credentials)
+# Run file-backed CLI integration tests
+cargo test -p atproto-cli --test file_pds
+
+# Run Bluesky PDS integration tests (requires credentials)
 export ATPROTO_TEST_IDENTIFIER="your.handle"
 export ATPROTO_TEST_PASSWORD="your-app-password"
-cargo test -p atproto-cli --test integration
+cargo test -p atproto-cli --test bluesky_pds
 ```
 
 ### Test Organization
@@ -108,7 +111,8 @@ cargo test -p atproto-cli --test integration
 | --------------- | ----------------------------------------- | -------------------- |
 | Unit tests      | Inline in source files                    | None                 |
 | Mock PDS tests  | `crates/muat-xrpc/tests/mock_pds.rs`      | `wiremock`           |
-| CLI integration | `crates/atproto-cli/tests/integration.rs` | Real PDS credentials |
+| CLI integration (file) | `crates/atproto-cli/tests/file_pds.rs` | None                 |
+| CLI integration (Bluesky) | `crates/atproto-cli/tests/bluesky_pds.rs` | Real PDS credentials |
 
 Integration tests are skipped automatically if `ATPROTO_TEST_IDENTIFIER` is not set.
 
@@ -171,6 +175,8 @@ Key dependencies and their purposes:
 CI workflows run on pull requests and pushes. GitHub branch protection rules must be configured in repository settings to require the CI workflow checks for merges into `main`. This cannot be enforced by workflow code alone.
 
 If you add crates.io publishing to CI, store a `CARGO_REGISTRY_TOKEN` (or `CRATES_IO_TOKEN`) secret in GitHub Settings and reference it in the workflow environment.
+
+Bluesky PDS e2e tests are intentionally optional and only run when secrets are present and the workflow is not a pull request from a fork.
 
 ## Release Process
 

@@ -89,14 +89,24 @@ impl FileStore {
         self.pds_dir().join("repos")
     }
 
+    /// Convert a DID into a filesystem-safe directory name.
+    fn did_dir_name(did: &Did) -> String {
+        // Windows does not allow ':' in path segments.
+        did.as_str().replace(':', "_")
+    }
+
     /// Get the path for a specific account.
     fn account_path(&self, did: &Did) -> PathBuf {
-        self.accounts_dir().join(did.as_str()).join("account.json")
+        self.accounts_dir()
+            .join(Self::did_dir_name(did))
+            .join("account.json")
     }
 
     /// Get the collections directory for a specific repo (DID).
     fn repo_collections_dir(&self, did: &Did) -> PathBuf {
-        self.repos_dir().join(did.as_str()).join("collections")
+        self.repos_dir()
+            .join(Self::did_dir_name(did))
+            .join("collections")
     }
 
     /// Get the path for a specific record.
@@ -232,7 +242,7 @@ impl FileStore {
 
     #[instrument(skip(self))]
     pub fn remove_account(&self, did: &Did, delete_records: bool) -> Result<()> {
-        let account_dir = self.accounts_dir().join(did.as_str());
+        let account_dir = self.accounts_dir().join(Self::did_dir_name(did));
 
         if !account_dir.exists() {
             return Err(Error::Protocol(ProtocolError::new(
@@ -245,7 +255,7 @@ impl FileStore {
         fs::remove_dir_all(&account_dir).map_err(map_io)?;
 
         if delete_records {
-            let repo_dir = self.repos_dir().join(did.as_str());
+            let repo_dir = self.repos_dir().join(Self::did_dir_name(did));
             if repo_dir.exists() {
                 fs::remove_dir_all(&repo_dir).map_err(map_io)?;
             }

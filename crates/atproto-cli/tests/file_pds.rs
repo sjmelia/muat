@@ -1,213 +1,26 @@
-//! CLI integration tests against a real PDS.
-//!
-//! These tests are opt-in and require environment variables to be set:
-//! - ATPROTO_TEST_IDENTIFIER: Test account handle or DID
-//! - ATPROTO_TEST_PASSWORD: Test account app password
-//!
-//! Tests are skipped if these variables are not set.
-//!
-//! All test records use the `org.muat.test.record` namespace to avoid
-//! polluting real collections.
+//! CLI integration tests against the file-backed PDS.
 
-use std::process::{Command, Output};
+mod common;
+
+use std::path::Path;
+use std::process::Command;
+
 use tempfile::TempDir;
+use url::Url;
 
-/// Test collection namespace - non-Bluesky to avoid pollution
-const TEST_COLLECTION: &str = "org.muat.test.record";
+use common::{TEST_COLLECTION, apply_home_env, run_cli_with_env, run_cli_with_env_success};
 
-/// Get test credentials from environment.
-/// Returns None if not set, causing tests to be skipped.
-fn get_test_credentials() -> Option<(String, String)> {
-    let identifier = std::env::var("ATPROTO_TEST_IDENTIFIER").ok()?;
-    let password = std::env::var("ATPROTO_TEST_PASSWORD").ok()?;
-    Some((identifier, password))
-}
-
-/// Run the CLI binary with arguments.
-fn run_cli(args: &[&str]) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_atproto"));
-    cmd.args(args);
-    cmd.output().expect("Failed to execute CLI")
-}
-
-/// Run the CLI and expect success.
-fn run_cli_success(args: &[&str]) -> String {
-    let output = run_cli(args);
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!("CLI command failed: {:?}\nstderr: {}", args, stderr);
-    }
-    String::from_utf8_lossy(&output.stdout).to_string()
-}
-
-/// Run the CLI and expect failure.
-#[allow(dead_code)]
-fn run_cli_failure(args: &[&str]) -> String {
-    let output = run_cli(args);
-    if output.status.success() {
-        panic!("CLI command should have failed: {:?}", args);
-    }
-    String::from_utf8_lossy(&output.stderr).to_string()
-}
-
-/// Delete all test records (cleanup helper).
-fn cleanup_test_records() {
-    // List and delete any existing test records
-    let output = run_cli(&["pds", "list-records", TEST_COLLECTION]);
-    if !output.status.success() {
-        return; // No session or collection doesn't exist
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if let Ok(record) = serde_json::from_str::<serde_json::Value>(line)
-            && let Some(uri) = record["uri"].as_str()
-        {
-            let _ = run_cli(&["pds", "delete-record", uri]);
-        }
-    }
-}
-
-#[test]
-fn test_login() {
-    let Some((identifier, password)) = get_test_credentials() else {
-        eprintln!("Skipping test_login: ATPROTO_TEST_IDENTIFIER/PASSWORD not set");
-        return;
-    };
-
-    let output = run_cli(&[
-        "pds",
-        "login",
-        "--identifier",
-        &identifier,
-        "--password",
-        &password,
-    ]);
-
-    assert!(
-        output.status.success(),
-        "Login failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Logged in successfully") || stdout.contains("✓"));
-}
-
-#[test]
-fn test_whoami() {
-    let Some((identifier, password)) = get_test_credentials() else {
-        eprintln!("Skipping test_whoami: credentials not set");
-        return;
-    };
-
-    // Ensure logged in
-    run_cli(&[
-        "pds",
-        "login",
-        "--identifier",
-        &identifier,
-        "--password",
-        &password,
-    ]);
-
-    let stdout = run_cli_success(&["pds", "whoami"]);
-    assert!(stdout.contains("DID:") || stdout.contains("did:"));
-}
-
-#[test]
-fn test_refresh_token() {
-    let Some((identifier, password)) = get_test_credentials() else {
-        eprintln!("Skipping test_refresh_token: credentials not set");
-        return;
-    };
-
-    // Ensure logged in
-    run_cli(&[
-        "pds",
-        "login",
-        "--identifier",
-        &identifier,
-        "--password",
-        &password,
-    ]);
-
-    let output = run_cli(&["pds", "refresh-token"]);
-    assert!(
-        output.status.success(),
-        "Refresh failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-#[test]
-fn test_record_lifecycle() {
-    let Some((identifier, password)) = get_test_credentials() else {
-        eprintln!("Skipping test_record_lifecycle: credentials not set");
-        return;
-    };
-
-    // Ensure logged in
-    run_cli(&[
-        "pds",
-        "login",
-        "--identifier",
-        &identifier,
-        "--password",
-        &password,
-    ]);
-
-    // Cleanup any existing test records
-    cleanup_test_records();
-
-    // List records (should be empty or have no test records)
-    let stdout = run_cli_success(&["pds", "list-records", TEST_COLLECTION]);
-    let initial_count = stdout.lines().filter(|l| !l.is_empty()).count();
-
-    // Note: Creating records on a real Bluesky PDS requires a valid lexicon schema,
-    // which org.muat.test.record doesn't have. For full record lifecycle testing,
-    // see test_file_pds_record_lifecycle which uses a local file-based PDS.
-
-    // List records again
-    let stdout = run_cli_success(&["pds", "list-records", TEST_COLLECTION]);
-    let final_count = stdout.lines().filter(|l| !l.is_empty()).count();
-
-    // Should be same count (no records created)
-    assert_eq!(initial_count, final_count);
-}
-
-// ============================================================================
-// File-based PDS tests (no external credentials required)
-// ============================================================================
-
-/// Run the CLI with a custom HOME directory for isolated session storage.
-fn run_cli_with_env(args: &[&str], home: &std::path::Path, pds_url: &str) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_atproto"));
-    cmd.args(args);
-    cmd.env("HOME", home);
-    cmd.env("XDG_DATA_HOME", home.join("data"));
-    // Set PDS URL via environment if needed for commands that default to bsky.social
-    if !args.contains(&"--pds") {
-        cmd.env("ATPROTO_PDS", pds_url);
-    }
-    cmd.output().expect("Failed to execute CLI")
-}
-
-/// Run the CLI with a custom HOME and expect success.
-fn run_cli_with_env_success(args: &[&str], home: &std::path::Path, pds_url: &str) -> String {
-    let output = run_cli_with_env(args, home, pds_url);
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!("CLI command failed: {:?}\nstderr: {}", args, stderr);
-    }
-    String::from_utf8_lossy(&output.stdout).to_string()
+fn file_pds_url(path: &Path) -> String {
+    Url::from_directory_path(path)
+        .expect("Failed to convert path to file URL")
+        .to_string()
 }
 
 #[test]
 fn test_file_pds_create_account() {
     let temp_dir = TempDir::new().unwrap();
     let pds_path = temp_dir.path().join("pds");
-    let pds_url = format!("file://{}", pds_path.display());
+    let pds_url = file_pds_url(&pds_path);
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     let password = "test-password";
@@ -242,7 +55,7 @@ fn test_file_pds_create_account() {
 fn test_file_pds_login() {
     let temp_dir = TempDir::new().unwrap();
     let pds_path = temp_dir.path().join("pds");
-    let pds_url = format!("file://{}", pds_path.display());
+    let pds_url = file_pds_url(&pds_path);
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     let password = "test-password";
@@ -292,7 +105,7 @@ fn test_file_pds_login() {
 fn test_file_pds_login_nonexistent_account() {
     let temp_dir = TempDir::new().unwrap();
     let pds_path = temp_dir.path().join("pds");
-    let pds_url = format!("file://{}", pds_path.display());
+    let pds_url = file_pds_url(&pds_path);
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&pds_path).unwrap();
@@ -330,7 +143,7 @@ fn test_file_pds_login_nonexistent_account() {
 fn test_file_pds_record_lifecycle() {
     let temp_dir = TempDir::new().unwrap();
     let pds_path = temp_dir.path().join("pds");
-    let pds_url = format!("file://{}", pds_path.display());
+    let pds_url = file_pds_url(&pds_path);
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     let password = "test-password";
@@ -384,8 +197,8 @@ fn test_file_pds_record_lifecycle() {
         "--json",
         "-",
     ]);
-    cmd.env("HOME", &home);
-    cmd.env("XDG_DATA_HOME", home.join("data"));
+    apply_home_env(&mut cmd, &home);
+    cmd.env("ATPROTO_PDS", &pds_url);
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -450,7 +263,7 @@ fn test_file_pds_record_lifecycle() {
 fn test_file_pds_whoami() {
     let temp_dir = TempDir::new().unwrap();
     let pds_path = temp_dir.path().join("pds");
-    let pds_url = format!("file://{}", pds_path.display());
+    let pds_url = file_pds_url(&pds_path);
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     let password = "test-password";
@@ -491,23 +304,44 @@ fn test_file_pds_whoami() {
 
 #[test]
 fn test_list_records_positional() {
-    let Some((identifier, password)) = get_test_credentials() else {
-        eprintln!("Skipping test_list_records_positional: credentials not set");
-        return;
-    };
+    let temp_dir = TempDir::new().unwrap();
+    let pds_path = temp_dir.path().join("pds");
+    let pds_url = file_pds_url(&pds_path);
+    let home = temp_dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let password = "test-password";
 
-    // Ensure logged in
-    run_cli(&[
-        "pds",
-        "login",
-        "--identifier",
-        &identifier,
-        "--password",
-        &password,
-    ]);
+    // Create and login
+    run_cli_with_env_success(
+        &[
+            "pds",
+            "create-account",
+            "--pds",
+            &pds_url,
+            "--password",
+            password,
+            "erin.local",
+        ],
+        &home,
+        &pds_url,
+    );
+    run_cli_with_env_success(
+        &[
+            "pds",
+            "login",
+            "--pds",
+            &pds_url,
+            "--identifier",
+            "erin.local",
+            "--password",
+            password,
+        ],
+        &home,
+        &pds_url,
+    );
 
-    // Test positional collection argument (the main point of G3)
-    let output = run_cli(&["pds", "list-records", "app.bsky.feed.post"]);
+    // Test positional collection argument
+    let output = run_cli_with_env(&["pds", "list-records", TEST_COLLECTION], &home, &pds_url);
     assert!(
         output.status.success(),
         "Positional list-records failed: {}",
@@ -521,8 +355,7 @@ fn test_no_session_error() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_atproto"));
     cmd.args(["pds", "whoami"]);
-    cmd.env("HOME", temp_dir.path());
-    cmd.env("XDG_DATA_HOME", temp_dir.path().join("data"));
+    apply_home_env(&mut cmd, temp_dir.path());
 
     let output = cmd.output().expect("Failed to execute CLI");
     assert!(!output.status.success());

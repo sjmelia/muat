@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fmt:
     name: Fmt (${{ matrix.os }})
@@ -28,18 +32,6 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fmt-
-            ${{ runner.os }}-cargo-
-
       - name: Rustfmt (check)
         run: cargo fmt --all -- --check
 
@@ -47,7 +39,6 @@ jobs:
     name: Clippy (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    needs: [fmt]
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +72,7 @@ jobs:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    needs: [fmt]
+    needs: [clippy]
     strategy:
       fail-fast: false
       matrix:
@@ -106,8 +97,8 @@ jobs:
             ${{ runner.os }}-cargo-test-
             ${{ runner.os }}-cargo-
 
-      - name: Tests
-        run: cargo test --workspace
+      - name: Unit tests
+        run: cargo test --workspace --lib --bins
 
   coverage:
     name: Coverage (linux)
@@ -144,13 +135,23 @@ jobs:
       - name: Coverage summary
         run: |
           mkdir -p target/llvm-cov
-          cargo llvm-cov --workspace --summary-only >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Coverage"
+            echo ""
+            echo '```text'
+            cargo llvm-cov --workspace --lib --bins --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   integration_tests:
-    name: Integration tests (linux)
-    runs-on: ubuntu-latest
+    name: Integration tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     needs: [tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -171,7 +172,11 @@ jobs:
             ${{ runner.os }}-cargo-integration-
             ${{ runner.os }}-cargo-
 
+      - name: Integration tests (file PDS)
+        run: cargo test -p atproto-cli --test file_pds
+
       - name: Integration tests (real PDS)
+        shell: bash
         env:
           ATPROTO_TEST_IDENTIFIER: ${{ secrets.ATPROTO_TEST_IDENTIFIER }}
           ATPROTO_TEST_PASSWORD: ${{ secrets.ATPROTO_TEST_PASSWORD }}
@@ -180,4 +185,4 @@ jobs:
             echo "Skipping integration tests: missing ATPROTO_TEST_IDENTIFIER and/or ATPROTO_TEST_PASSWORD secrets."
             exit 0
           fi
-          cargo test --workspace -- --nocapture
+          cargo test -p atproto-cli --test bluesky_pds -- --nocapture
