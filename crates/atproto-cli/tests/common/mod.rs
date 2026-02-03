@@ -37,8 +37,7 @@ pub fn run_cli_success(args: &[&str]) -> String {
 pub fn run_cli_with_env(args: &[&str], home: &Path, pds_url: &str) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_atproto"));
     cmd.args(args);
-    cmd.env("HOME", home);
-    cmd.env("XDG_DATA_HOME", home.join("data"));
+    apply_home_env(&mut cmd, home);
     // Set PDS URL via environment if needed for commands that default to bsky.social
     if !args.contains(&"--pds") {
         cmd.env("ATPROTO_PDS", pds_url);
@@ -55,6 +54,25 @@ pub fn run_cli_with_env_success(args: &[&str], home: &Path, pds_url: &str) -> St
         panic!("CLI command failed: {:?}\nstderr: {}", args, stderr);
     }
     String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+/// Apply HOME/XDG env plus Windows appdata envs so ProjectDirs isolates session state.
+#[allow(dead_code)]
+pub fn apply_home_env(cmd: &mut Command, home: &Path) {
+    cmd.env("HOME", home);
+    cmd.env("XDG_DATA_HOME", home.join("data"));
+    cmd.env("XDG_CONFIG_HOME", home.join("config"));
+
+    #[cfg(windows)]
+    {
+        let appdata = home.join("appdata");
+        let local_appdata = home.join("localappdata");
+        let _ = std::fs::create_dir_all(&appdata);
+        let _ = std::fs::create_dir_all(&local_appdata);
+        cmd.env("APPDATA", &appdata);
+        cmd.env("LOCALAPPDATA", &local_appdata);
+        cmd.env("USERPROFILE", home);
+    }
 }
 
 /// Delete all test records (cleanup helper).

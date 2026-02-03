@@ -8,7 +8,7 @@ use std::process::Command;
 use tempfile::TempDir;
 use url::Url;
 
-use common::{TEST_COLLECTION, run_cli_with_env, run_cli_with_env_success};
+use common::{TEST_COLLECTION, apply_home_env, run_cli_with_env, run_cli_with_env_success};
 
 fn file_pds_url(path: &Path) -> String {
     Url::from_directory_path(path)
@@ -197,8 +197,8 @@ fn test_file_pds_record_lifecycle() {
         "--json",
         "-",
     ]);
-    cmd.env("HOME", &home);
-    cmd.env("XDG_DATA_HOME", home.join("data"));
+    apply_home_env(&mut cmd, &home);
+    cmd.env("ATPROTO_PDS", &pds_url);
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -355,8 +355,7 @@ fn test_no_session_error() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_atproto"));
     cmd.args(["pds", "whoami"]);
-    cmd.env("HOME", temp_dir.path());
-    cmd.env("XDG_DATA_HOME", temp_dir.path().join("data"));
+    apply_home_env(&mut cmd, temp_dir.path());
 
     let output = cmd.output().expect("Failed to execute CLI");
     assert!(!output.status.success());

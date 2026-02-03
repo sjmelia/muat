@@ -135,7 +135,13 @@ jobs:
       - name: Coverage summary
         run: |
           mkdir -p target/llvm-cov
-          cargo llvm-cov --workspace --lib --bins --summary-only >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Coverage"
+            echo ""
+            echo '```text'
+            cargo llvm-cov --workspace --lib --bins --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   integration_tests:
     name: Integration tests (${{ matrix.os }})
