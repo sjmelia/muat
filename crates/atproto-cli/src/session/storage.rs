@@ -47,7 +47,10 @@ fn session_path() -> Result<PathBuf> {
     }
 
     if let Some(home) = std::env::var_os("HOME") {
-        let data_dir = PathBuf::from(home).join(".local").join("share").join("atproto");
+        let data_dir = PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("atproto");
         fs::create_dir_all(&data_dir).context("Failed to create data directory")?;
         return Ok(data_dir.join("session.json"));
     }
