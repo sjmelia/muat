@@ -3,7 +3,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
 
-use muat::{AtUri, Did, Nsid, Rkey};
+use muat_core::traits::Session;
+use muat_core::{AtUri, Did, Nsid, Rkey};
 
 use crate::output;
 use crate::session::storage;

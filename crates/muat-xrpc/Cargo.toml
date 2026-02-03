@@ -1,0 +1,25 @@
+[package]
+name = "muat-xrpc"
+version = "0.1.0"
+edition = "2024"
+description = "XRPC-backed PDS implementation for muat"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sjmelia/muat"
+keywords = ["atproto", "bluesky", "decentralized"]
+categories = ["api-bindings", "network-programming"]
+
+[dependencies]
+muat-core = { path = "../muat-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["sync", "time", "io-util"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+async-stream = "0.3"
+futures-util = "0.3"
+tracing = { workspace = true }
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+wiremock = "0.6"

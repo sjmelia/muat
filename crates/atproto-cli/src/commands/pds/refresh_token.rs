@@ -18,7 +18,11 @@ pub async fn run(_args: RefreshTokenArgs) -> Result<()> {
 
     eprintln!("{}", "Refreshing session...".dimmed());
 
-    session
+    let Some(xrpc_session) = session.as_xrpc() else {
+        anyhow::bail!("Refresh is only supported for network PDS sessions.");
+    };
+
+    xrpc_session
         .refresh()
         .await
         .context("Failed to refresh session")?;

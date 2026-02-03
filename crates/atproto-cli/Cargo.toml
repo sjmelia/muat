@@ -13,7 +13,9 @@ name = "atproto"
 path = "src/main.rs"
 
 [dependencies]
-muat = { path = "../muat" }
+muat-core = { path = "../muat-core" }
+muat-file = { path = "../muat-file" }
+muat-xrpc = { path = "../muat-xrpc" }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -25,6 +27,7 @@ anyhow = "1"
 colored = "2"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
+async-trait = "0.1"
 
 [build-dependencies]
 # No dependencies needed - build.rs uses only std

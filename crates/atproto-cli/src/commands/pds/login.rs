@@ -4,9 +4,13 @@ use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;
 
-use muat::{Credentials, Pds, PdsUrl};
+use muat_core::traits::Pds;
+use muat_core::{Credentials, PdsUrl};
+use muat_file::FilePds;
+use muat_xrpc::XrpcPds;
 
 use crate::output;
+use crate::session::CliSession;
 use crate::session::storage;
 
 #[derive(Args, Debug)]
@@ -25,15 +29,21 @@ pub struct LoginArgs {
 }
 
 pub async fn run(args: LoginArgs) -> Result<()> {
-    let pds = PdsUrl::new(&args.pds).context("Invalid PDS URL")?;
+    let pds_url = PdsUrl::new(&args.pds).context("Invalid PDS URL")?;
     let credentials = Credentials::new(&args.identifier, &args.password);
 
     eprintln!("{}", "Logging in...".dimmed());
 
-    let session = Pds::open(pds)
-        .login(credentials)
-        .await
-        .context("Failed to login")?;
+    let session = if pds_url.is_local() {
+        let path = pds_url
+            .to_file_path()
+            .context("Failed to convert file:// URL to path")?;
+        let pds = FilePds::new(&path, pds_url);
+        CliSession::File(pds.login(credentials).await.context("Failed to login")?)
+    } else {
+        let pds = XrpcPds::new(pds_url.clone());
+        CliSession::Xrpc(pds.login(credentials).await.context("Failed to login")?)
+    };
 
     // Save session
     storage::save_session(&session)

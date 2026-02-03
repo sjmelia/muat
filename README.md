@@ -14,7 +14,9 @@ Rust toolkit for working with the AT Protocol (Bluesky's decentralized social ne
 
 | Crate | Description | Docs |
 |-------|-------------|------|
-| `muat` | Core AT Protocol library - authentication, session management, repo operations, PDS abstraction | [README](crates/muat/README.md) |
+| `muat-core` | Core types, errors, and traits (`Pds`, `Session`, `Firehose`) | [README](crates/muat-core/README.md) |
+| `muat-xrpc` | XRPC-backed PDS implementation for real servers | [README](crates/muat-xrpc/README.md) |
+| `muat-file` | File-backed PDS implementation for local dev/testing | [README](crates/muat-file/README.md) |
 | `atproto-cli` | CLI tool for PDS exploration and debugging | [README](crates/atproto-cli/README.md) |
 
 ## Quick Start
@@ -61,22 +63,24 @@ atproto pds subscribe
 
 ```bash
 # Create a local account
-atproto pds create-account alice.local --pds file://./pds
+atproto pds create-account alice.local --password mypass --pds file://./pds
 
 # Remove a local account
-atproto pds remove-account did:plc:xxx --pds file://./pds
+atproto pds remove-account did:plc:xxx --password mypass --pds file://./pds
 ```
 
 ### Library Usage
 
 ```rust
-use muat::{Credentials, Pds, PdsUrl, Nsid};
+use muat_core::traits::{Pds, Session};
+use muat_core::{Credentials, Nsid, PdsUrl};
+use muat_xrpc::XrpcPds;
 
 #[tokio::main]
-async fn main() -> Result<(), muat::Error> {
+async fn main() -> Result<(), muat_core::Error> {
     // Connect to a PDS
     let pds_url = PdsUrl::new("https://bsky.social")?;
-    let pds = Pds::open(pds_url);
+    let pds = XrpcPds::new(pds_url);
     let credentials = Credentials::new("alice.bsky.social", "app-password");
 
     // Create a session
@@ -85,7 +89,9 @@ async fn main() -> Result<(), muat::Error> {
 
     // List records
     let collection = Nsid::new("app.bsky.feed.post")?;
-    let records = session.list_records(session.did(), &collection, Some(10), None).await?;
+    let records = session
+        .list_records(session.did(), &collection, Some(10), None)
+        .await?;
 
     for record in records.records {
         println!("{}: {:?}", record.uri, record.value);
@@ -105,8 +111,8 @@ async fn main() -> Result<(), muat::Error> {
 │                    atproto-cli                           │
 │              (Thin CLI wrapper over muat)               │
 ├─────────────────────────────────────────────────────────┤
-│                        muat                              │
-│    (Core protocol: XRPC, Auth, Session, Repo ops)       │
+│             muat-xrpc / muat-file / muat-core           │
+│   (PDS implementations + shared types and traits)       │
 ├─────────────────────────────────────────────────────────┤
 │                    AT Protocol                           │
 │                  (XRPC over HTTPS)                      │
@@ -115,7 +121,7 @@ async fn main() -> Result<(), muat::Error> {
 
 ### Key Design Principles
 
-1. **Session-centric API** - All authenticated operations flow through a `Session` object
+1. **Session-scoped auth** - All authenticated operations flow through a `Session` object
 2. **Strong typing** - Protocol types (`Did`, `Nsid`, `AtUri`, `RecordValue`) are validated at construction
 3. **Schema-agnostic** - Record values use `RecordValue` (guarantees `$type` field), not typed lexicons
 4. **Explicit over magic** - No hidden retries, no global state, no implicit defaults
@@ -216,16 +222,17 @@ This triggers the release workflow which:
 muat/
 ├── Cargo.toml              # Workspace manifest
 ├── crates/
-│   ├── muat/               # Core protocol library
+│   ├── muat-core/          # Core types, errors, and traits
 │   │   ├── src/
 │   │   │   ├── lib.rs
 │   │   │   ├── types/      # Did, Nsid, AtUri, PdsUrl, Rkey
-│   │   │   ├── account/    # Credentials, Tokens
-│   │   │   ├── pds/        # Pds, Session, FilePds/XrpcPds, firehose
-│   │   │   ├── repo/       # Repository operations, RecordValue, events
+│   │   │   ├── repo/       # RecordValue, records, events
+│   │   │   ├── traits/     # Pds, Session, Firehose
 │   │   │   └── error.rs
 │   │   └── docs/
 │   │       └── Invariants.md
+│   ├── muat-xrpc/          # XRPC-backed PDS implementation
+│   ├── muat-file/          # File-backed PDS implementation
 │   └── atproto-cli/        # CLI tool
 │       ├── src/
 │       │   ├── main.rs

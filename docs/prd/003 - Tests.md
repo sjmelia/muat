@@ -148,17 +148,17 @@ Testing is split deliberately by layer to balance realism, speed, and determinis
 
 ### Test Strategy Overview (Normative)
 
-* **`muat` library tests** use a **mock PDS**
+* **`muat-xrpc` tests** use a **mock PDS**
 * **`atproto` CLI tests** use a **real PDS** (env-gated)
-* No direct `muat` tests against a real PDS are required at this stage
+* No direct `muat-xrpc` tests against a real PDS are required at this stage
 
 This provides fast, deterministic coverage of protocol logic while preserving end-to-end validation of real-world behaviour via the CLI.
 
 ---
 
-### G4.1 — `muat` Tests (Mock PDS)
+### G4.1 — `muat-xrpc` Tests (Mock PDS)
 
-`muat` tests must:
+`muat-xrpc` tests must:
 
 * run fully in-process
 * use a mock or local HTTP server

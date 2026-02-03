@@ -4,7 +4,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;
 
-use muat::{Did, Nsid};
+use muat_core::traits::Session;
+use muat_core::{Did, Nsid};
 
 use crate::output;
 use crate::session::storage;

@@ -6,7 +6,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 use serde_json::Value;
 
-use muat::{Nsid, RecordValue};
+use muat_core::traits::Session;
+use muat_core::{Nsid, RecordValue};
 
 use crate::output;
 use crate::session::storage;

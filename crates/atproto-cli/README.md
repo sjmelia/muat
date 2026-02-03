@@ -4,7 +4,7 @@ CLI tool for AT Protocol PDS exploration and debugging.
 
 ## Overview
 
-`atproto-cli` is a thin CLI wrapper over the `muat` library, providing command-line access to AT Protocol Personal Data Servers. It's designed for exploration, debugging, and scripting workflows.
+`atproto-cli` is a thin CLI wrapper over the `muat` crates (`muat-core`, `muat-xrpc`, `muat-file`), providing command-line access to AT Protocol Personal Data Servers. It's designed for exploration, debugging, and scripting workflows.
 
 ## Installation
 
@@ -46,10 +46,10 @@ For offline development, use a local filesystem-backed PDS:
 
 ```bash
 # Create a local account
-atproto pds create-account alice.local --pds file://./pds
+atproto pds create-account alice.local --password mypass --pds file://./pds
 
 # Remove a local account
-atproto pds remove-account did:plc:xxx --pds file://./pds --force
+atproto pds remove-account did:plc:xxx --password mypass --pds file://./pds --force
 ```
 
 ## Commands
@@ -93,12 +93,13 @@ atproto pds refresh-token
 Create a new account in a local filesystem PDS.
 
 ```bash
-atproto pds create-account <HANDLE> [--pds <URL>]
+atproto pds create-account <HANDLE> --password <PASSWORD> [--pds <URL>]
 ```
 
 | Argument/Flag | Description | Default |
 |---------------|-------------|---------|
 | `<HANDLE>` | Handle for the new account | Required |
+| `--password` | Account password | Required |
 | `--pds` | Local PDS URL | `file://./pds` |
 
 This command only works with `file://` URLs. For network PDS, use the web interface.
@@ -108,12 +109,13 @@ This command only works with `file://` URLs. For network PDS, use the web interf
 Remove an account from a local filesystem PDS.
 
 ```bash
-atproto pds remove-account <DID> [--pds <URL>] [--delete-records] [-f/--force]
+atproto pds remove-account <DID> --password <PASSWORD> [--pds <URL>] [--delete-records] [-f/--force]
 ```
 
 | Argument/Flag | Description | Default |
 |---------------|-------------|---------|
 | `<DID>` | DID of the account to remove | Required |
+| `--password` | Account password | Required |
 | `--pds` | Local PDS URL | `file://./pds` |
 | `--delete-records` | Also delete all records | false |
 | `-f`, `--force` | Skip confirmation | false |

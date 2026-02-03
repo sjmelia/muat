@@ -1,6 +1,6 @@
 # PRD-008: Uniform Firehose Subscription API
 
-> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`Firehose` with firehose on `Pds`. See `crates/muat-core/README.md` and `crates/muat-core/docs/Invariants.md`  for current rules. File paths in this document refer to the pre-split `crates/muat` layout.
 
 
 ## Status
@@ -49,11 +49,11 @@ Additionally, the file-based PDS directory layout was collection-centric (`/coll
 impl Session {
     /// Subscribe to repository events.
     /// Works uniformly for both file:// and https:// PDS URLs.
-    pub fn subscribe_repos(&self) -> Result<RepoEventStream, Error>;
+    pub fn subscribe_repos(&self) -> Result<Firehose, Error>;
 }
 ```
 
-`RepoEventStream` wraps a `Pin<Box<dyn Stream<Item = Result<RepoEvent, Error>> + Send>>` and provides:
+`Firehose` wraps a `Pin<Box<dyn Stream<Item = Result<RepoEvent, Error>> + Send>>` and provides:
 
 * `next(&mut self) -> impl Future<Output = Option<Result<RepoEvent, Error>>>`
 * Natural integration with `tokio::select!` and `StreamExt`
@@ -201,7 +201,7 @@ tokio::select! {
 
 This PRD is complete when:
 
-* `session.subscribe_repos()` returns a uniform `RepoEventStream` for both backends
+* `session.subscribe_repos()` returns a uniform `Firehose` for both backends
 * File-based events are converted to the same `RepoEvent` type as network events
 * The stream API works naturally with `tokio::select!`
 * The directory layout is repo-centric

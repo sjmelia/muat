@@ -1,6 +1,6 @@
 # PRD-007: PDS Backend Unification (Session + XRPC)
 
-> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`Firehose` with firehose on `Pds`. See `crates/muat-core/README.md` and `crates/muat-core/docs/Invariants.md`  for current rules. File paths in this document refer to the pre-split `crates/muat` layout.
 
 
 ## Status
@@ -13,7 +13,7 @@ Ready
 
 We want a single backend interface used by all record operations after the PDS URL has been validated. To enable a full API surface behind the backend, the authentication invariant is loosened so that the backend can accept a token parameter when required.
 
-This PRD takes precedence over any other invariants, including those in `/crates/muat/docs/Invariants.md`.
+This PRD is historical and does not override the current invariants in `crates/muat-core/docs/Invariants.md`.
 
 ---
 
@@ -95,9 +95,9 @@ Prefer a concrete enum to store the backend inside `Session`, since the set of b
 
 ### 5) Documentation Updates
 
-* Update `crates/muat/README.md` to show backend usage for both file and network cases.
-* Update module docs in `crates/muat/src/backend/mod.rs` to reflect that network operations now implement the trait.
-* Update `/crates/muat/docs/Invariants.md` with new invariants.
+* Update `crates/muat-core/README.md` to show backend usage for both file and network cases.
+* Update module docs in `crates/muat-xrpc/src/lib.rs` and `crates/muat-file/src/lib.rs` to reflect backend roles.
+* Update `crates/muat-core/docs/Invariants.md` with new invariants.
 
 ---
 

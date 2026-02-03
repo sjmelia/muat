@@ -3,10 +3,14 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;
+use std::pin::Pin;
+
 use futures_util::StreamExt;
 
-use muat::Pds;
-use muat::repo::RepoEvent;
+use muat_core::repo::RepoEvent;
+use muat_core::traits::{Firehose, Pds};
+use muat_file::FilePds;
+use muat_xrpc::XrpcPds;
 
 use crate::session::storage;
 
@@ -38,10 +42,23 @@ pub async fn run(args: SubscribeArgs) -> Result<()> {
     let json_output = args.json;
     let filter = args.filter.clone();
 
-    let pds = Pds::open(session.pds().clone());
-    let mut stream = pds
-        .firehose_from(args.cursor)
-        .context("Failed to start subscription")?;
+    let mut stream: Pin<Box<dyn Firehose>> = if session.pds().is_local() {
+        let path = session
+            .pds()
+            .to_file_path()
+            .context("Failed to convert file:// URL to path")?;
+        let pds = FilePds::new(&path, session.pds().clone());
+        Box::pin(
+            pds.firehose_from(args.cursor)
+                .context("Failed to start subscription")?,
+        )
+    } else {
+        let pds = XrpcPds::new(session.pds().clone());
+        Box::pin(
+            pds.firehose_from(args.cursor)
+                .context("Failed to start subscription")?,
+        )
+    };
 
     while let Some(result) = stream.next().await {
         match result {

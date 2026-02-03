@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/muat",
+    "crates/muat-core",
+    "crates/muat-file",
+    "crates/muat-xrpc",
     "crates/atproto-cli",
 ]
 

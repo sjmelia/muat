@@ -6,8 +6,9 @@
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use muat::PdsUrl;
-use muat::pds::FilePds;
+use muat_core::PdsUrl;
+use muat_core::traits::Pds;
+use muat_file::FilePds;
 
 use crate::output;
 
@@ -15,6 +16,10 @@ use crate::output;
 pub struct CreateAccountArgs {
     /// Handle for the new account (e.g., alice.local)
     pub handle: String,
+
+    /// Password for the new account
+    #[arg(long)]
+    pub password: String,
 
     /// PDS URL (must be file://)
     #[arg(long, default_value = "file://./pds")]
@@ -37,12 +42,13 @@ pub async fn run(args: CreateAccountArgs) -> Result<()> {
         .context("Failed to convert file:// URL to path")?;
 
     let backend = FilePds::new(&path, pds_url);
-    let did = backend
-        .create_account_local(&args.handle)
+    let output = backend
+        .create_account(&args.handle, Some(&args.password), None, None)
+        .await
         .context("Failed to create account")?;
 
-    output::field("DID", did.as_str());
-    output::field("Handle", &args.handle);
+    output::field("DID", output.did.as_str());
+    output::field("Handle", &output.handle);
     output::field("PDS", &args.pds);
     output::success("Account created successfully");
 

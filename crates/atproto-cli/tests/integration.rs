@@ -210,10 +210,19 @@ fn test_file_pds_create_account() {
     let pds_url = format!("file://{}", pds_path.display());
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
+    let password = "test-password";
 
     // Create an account
     let output = run_cli_with_env(
-        &["pds", "create-account", "--pds", &pds_url, "alice.local"],
+        &[
+            "pds",
+            "create-account",
+            "--pds",
+            &pds_url,
+            "--password",
+            password,
+            "alice.local",
+        ],
         &home,
         &pds_url,
     );
@@ -236,10 +245,19 @@ fn test_file_pds_login() {
     let pds_url = format!("file://{}", pds_path.display());
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
+    let password = "test-password";
 
     // Create an account first
     run_cli_with_env_success(
-        &["pds", "create-account", "--pds", &pds_url, "bob.local"],
+        &[
+            "pds",
+            "create-account",
+            "--pds",
+            &pds_url,
+            "--password",
+            password,
+            "bob.local",
+        ],
         &home,
         &pds_url,
     );
@@ -254,7 +272,7 @@ fn test_file_pds_login() {
             "--identifier",
             "bob.local",
             "--password",
-            "ignored",
+            password,
         ],
         &home,
         &pds_url,
@@ -315,10 +333,19 @@ fn test_file_pds_record_lifecycle() {
     let pds_url = format!("file://{}", pds_path.display());
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
+    let password = "test-password";
 
     // Create an account
     run_cli_with_env_success(
-        &["pds", "create-account", "--pds", &pds_url, "charlie.local"],
+        &[
+            "pds",
+            "create-account",
+            "--pds",
+            &pds_url,
+            "--password",
+            password,
+            "charlie.local",
+        ],
         &home,
         &pds_url,
     );
@@ -333,7 +360,7 @@ fn test_file_pds_record_lifecycle() {
             "--identifier",
             "charlie.local",
             "--password",
-            "ignored",
+            password,
         ],
         &home,
         &pds_url,
@@ -426,10 +453,19 @@ fn test_file_pds_whoami() {
     let pds_url = format!("file://{}", pds_path.display());
     let home = temp_dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
+    let password = "test-password";
 
     // Create and login
     run_cli_with_env_success(
-        &["pds", "create-account", "--pds", &pds_url, "dave.local"],
+        &[
+            "pds",
+            "create-account",
+            "--pds",
+            &pds_url,
+            "--password",
+            password,
+            "dave.local",
+        ],
         &home,
         &pds_url,
     );
@@ -442,7 +478,7 @@ fn test_file_pds_whoami() {
             "--identifier",
             "dave.local",
             "--password",
-            "ignored",
+            password,
         ],
         &home,
         &pds_url,

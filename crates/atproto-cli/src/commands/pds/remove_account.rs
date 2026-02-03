@@ -8,8 +8,9 @@ use std::io::{self, Write};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use muat::pds::FilePds;
-use muat::{Did, PdsUrl};
+use muat_core::traits::{Pds, Session};
+use muat_core::{Credentials, Did, PdsUrl};
+use muat_file::FilePds;
 
 use crate::output;
 
@@ -17,6 +18,10 @@ use crate::output;
 pub struct RemoveAccountArgs {
     /// DID of the account to remove
     pub did: String,
+
+    /// Account password
+    #[arg(long)]
+    pub password: String,
 
     /// Also delete all records for this account
     #[arg(long)]
@@ -49,14 +54,11 @@ pub async fn run(args: RemoveAccountArgs) -> Result<()> {
 
     let backend = FilePds::new(&path, pds_url);
 
-    // Check account exists
-    let account = backend
-        .get_account(&did)
-        .context("Failed to check account")?;
-
-    if account.is_none() {
-        bail!("Account {} not found", args.did);
-    }
+    // Check account exists by attempting login
+    let session = backend
+        .login(Credentials::new(did.as_str(), &args.password))
+        .await
+        .context("Failed to authenticate account")?;
 
     // Confirm unless --force
     if !args.force {
@@ -81,7 +83,13 @@ pub async fn run(args: RemoveAccountArgs) -> Result<()> {
     }
 
     backend
-        .remove_account(&did, args.delete_records)
+        .remove_account(
+            &did,
+            &session.access_token(),
+            args.delete_records,
+            Some(&args.password),
+        )
+        .await
         .context("Failed to remove account")?;
 
     output::success(&format!("Account {} removed", args.did));

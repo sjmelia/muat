@@ -8,7 +8,12 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-use muat::{Did, PdsUrl, Session};
+use muat_core::types::{Did, PdsUrl};
+use muat_core::{AccessToken, RefreshToken};
+use muat_file::{FilePds, FileSession};
+use muat_xrpc::XrpcSession;
+
+use super::CliSession;
 
 /// Stored session data.
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,17 +36,14 @@ fn session_path() -> Result<PathBuf> {
 }
 
 /// Save a session to disk.
-pub async fn save_session(session: &Session) -> Result<()> {
-    let access_token = session
-        .export_access_token()
-        .await
-        .context("Session has no access token to persist")?;
+pub async fn save_session(session: &CliSession) -> Result<()> {
+    let access_token = session.access_token();
 
     let stored = StoredSession {
         did: session.did().to_string(),
         pds: session.pds().to_string(),
-        access_token,
-        refresh_token: session.export_refresh_token().await,
+        access_token: access_token.as_str().to_string(),
+        refresh_token: session.refresh_token().map(|t| t.as_str().to_string()),
     };
 
     let path = session_path()?;
@@ -61,7 +63,7 @@ pub async fn save_session(session: &Session) -> Result<()> {
 }
 
 /// Load a session from disk.
-pub async fn load_session() -> Result<Option<Session>> {
+pub async fn load_session() -> Result<Option<CliSession>> {
     let path = session_path()?;
 
     if !path.exists() {
@@ -74,17 +76,23 @@ pub async fn load_session() -> Result<Option<Session>> {
     let pds = PdsUrl::new(&stored.pds).context("Invalid PDS URL in session")?;
     let did = Did::new(&stored.did).context("Invalid DID in session")?;
 
-    let session =
-        Session::from_persisted(pds.clone(), did, stored.access_token, stored.refresh_token);
+    let access_token = AccessToken::new(stored.access_token);
+    let refresh_token = stored.refresh_token.map(RefreshToken::new);
 
-    // Try to refresh the session (only for network PDS, file:// doesn't need refresh)
-    if pds.is_network()
-        && let Err(e) = session.refresh().await
-    {
-        tracing::warn!(error = %e, "Failed to refresh session, using existing tokens");
+    if pds.is_local() {
+        let path = pds
+            .to_file_path()
+            .context("Failed to convert file:// URL to path")?;
+        let file_pds = FilePds::new(&path, pds);
+        let session = FileSession::from_persisted(file_pds, access_token)?;
+        Ok(Some(CliSession::File(session)))
+    } else {
+        let session = XrpcSession::from_persisted(pds.clone(), did, access_token, refresh_token);
+        if let Err(e) = session.refresh().await {
+            tracing::warn!(error = %e, "Failed to refresh session, using existing tokens");
+        }
+        Ok(Some(CliSession::Xrpc(session)))
     }
-
-    Ok(Some(session))
 }
 
 /// Clear the stored session.
