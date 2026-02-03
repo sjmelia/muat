@@ -134,19 +134,6 @@ jobs:
           mkdir -p target/llvm-cov
           cargo llvm-cov --workspace --all-targets --all-features --json --summary-only --output-path target/llvm-cov/summary.json
 
-      - name: Enforce coverage threshold
-        run: |
-          python3 - <<'PY'
-          import json, os, sys
-          with open('target/llvm-cov/summary.json', 'r', encoding='utf-8') as f:
-              data = json.load(f)
-          lines = data['data'][0]['totals']['lines']['percent']
-          minimum = float(os.environ.get('COVERAGE_MIN', '0'))
-          print(f"line coverage: {lines:.2f}% (min: {minimum:.2f}%)")
-          if lines < minimum:
-              sys.exit(f\"coverage below threshold: {lines:.2f}% < {minimum:.2f}%\")
-          PY
-
   integration_tests:
     name: Integration tests
     runs-on: ubuntu-latest

@@ -2,7 +2,7 @@
 
 µat is a Rust toolkit for working with [AT Protocol](https://atproto.com/specs/atp) or AT/PDS-shaped filesystem stores, without requiring a full network PDS.
 
-> An “AT/PDS-shaped” store is one that preserves similar append-only record, firehose, and projection semantics as a network PDS, without implementing federation or hosting.
+I'm defining an “AT/PDS-shaped” store as one that preserves similar append-only record, firehose, and projection semantics as a network PDS, without implementing federation or hosting.
 
 - `muat-xrpc`: A minimal client for AT Protocol (ATproto) Personal Data Servers. (PDS)
   - you can use this to build your own AT based apps
@@ -26,7 +26,7 @@ makes for a nicely legible on-disk database format suitable for lots of differen
 That said, existing PDS implementations are pretty heavyweight. µat addresses this by providing a kind of "embedded PDS"
 that provides the same semantics as a real PDS; but just writes to the filesystem. It also provides a miniature XRPC client, as both a lightweight client and a conformance check the trait surface.
 
-If you want to talk _real_ AT in Rust; you might be better off using [ATrium](https://github.com/atrium-rs/atrium).
+If you want to talk full _real_ AT in Rust; you might be better off using [ATrium](https://github.com/atrium-rs/atrium).
 
 ### Crates
 
