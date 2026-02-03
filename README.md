@@ -165,6 +165,15 @@ cargo test --workspace
 cargo build --release --workspace
 ```
 
+### Agents
+
+I'm still refining my agent-assisted workflows; on this project i've tried to use PRD spec docs; but I have occasionally collapsed into
+iterative prompting.
+
+- See `/docs/archive` for historical PRD and plans.
+- See [/crates/muat-core/docs/Invariants.md](crates/muat-core/docs/Invariants.md) for some guardrails.
+- See [AGENTS.md](AGENTS.md) for some context tips (which are probably useful for humans as well)
+
 ## CI/CD & Releases
 
 ### CI Pipeline

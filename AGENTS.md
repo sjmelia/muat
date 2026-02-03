@@ -12,13 +12,14 @@ This document provides essential context for AI coding agents working on the mua
 4. **atproto-cli** - CLI tool for manual PDS exploration
 
 Key capabilities:
+
 - Network PDS support (HTTPS)
 - Local filesystem PDS support (`file://` URLs) for offline development
 - Version reporting with git commit SHA
 
 ## Quick Context
 
-```
+```text
 Language: Rust (2024 edition)
 Build: Cargo workspace
 Protocol: AT Protocol over XRPC (HTTPS)
@@ -30,27 +31,32 @@ Key pattern: Trait-based PDS/Session API with first-class tokens
 Before modifying code, understand these non-negotiable invariants:
 
 ### Session-First Capability
+
 - ALL authenticated operations MUST go through `Session`
 - No free functions for authenticated endpoints
 - `Session` is the only way to make authenticated requests
 
 ### Strong Typing at Boundaries
+
 - Use `Did`, `Nsid`, `AtUri`, `PdsUrl` - NOT `String`
 - Validation happens at construction, not at call sites
 - Parse once, use everywhere
 
 ### Security Requirements
+
 - Tokens and passwords MUST NEVER appear in logs
 - `Debug` implementations MUST NOT expose secrets
 - Session files MUST have restricted permissions (0600)
 - Tokens are opaque, first-class values (do not parse them)
 
 ### Schema Agnosticism
+
 - Record values use `RecordValue` (guarantees `$type` field, wraps `serde_json::Value`)
 - No lexicon-specific types in `muat-core`
 - Protocol layer does not interpret record contents beyond `$type` presence
 
 ### RecordValue Invariants
+
 - `RecordValue` MUST be a JSON object
 - `RecordValue` MUST contain a `$type` field
 - `$type` MUST be a string
@@ -58,25 +64,25 @@ Before modifying code, understand these non-negotiable invariants:
 
 ## File Locations
 
-| What | Where |
-|------|-------|
-| Core types | `crates/muat-core/src/types/` |
-| Core traits | `crates/muat-core/src/traits/` |
-| Repo operations | `crates/muat-core/src/repo/` |
-| RecordValue | `crates/muat-core/src/repo/record_value.rs` |
-| Error types | `crates/muat-core/src/error.rs` |
-| XRPC client | `crates/muat-xrpc/src/xrpc/` |
-| XRPC PDS/session | `crates/muat-xrpc/src/pds.rs`, `crates/muat-xrpc/src/session.rs` |
-| File backend | `crates/muat-file/src/` |
-| CLI commands | `crates/atproto-cli/src/commands/pds/` |
-| Session storage | `crates/atproto-cli/src/session/` |
-| CLI build script | `crates/atproto-cli/build.rs` |
-| PRDs | `docs/prd/` |
-| Implementation plans | `docs/plans/` |
-| Invariants doc | `crates/muat-core/docs/Invariants.md` |
-| Mock PDS tests | `crates/muat-xrpc/tests/mock_pds.rs` |
-| CLI integration tests | `crates/atproto-cli/tests/integration.rs` |
-| CI workflows | `.github/workflows/` |
+| What                  | Where                                                            |
+| --------------------- | ---------------------------------------------------------------- |
+| Core types            | `crates/muat-core/src/types/`                                    |
+| Core traits           | `crates/muat-core/src/traits/`                                   |
+| Repo operations       | `crates/muat-core/src/repo/`                                     |
+| RecordValue           | `crates/muat-core/src/repo/record_value.rs`                      |
+| Error types           | `crates/muat-core/src/error.rs`                                  |
+| XRPC client           | `crates/muat-xrpc/src/xrpc/`                                     |
+| XRPC PDS/session      | `crates/muat-xrpc/src/pds.rs`, `crates/muat-xrpc/src/session.rs` |
+| File backend          | `crates/muat-file/src/`                                          |
+| CLI commands          | `crates/atproto-cli/src/commands/pds/`                           |
+| Session storage       | `crates/atproto-cli/src/session/`                                |
+| CLI build script      | `crates/atproto-cli/build.rs`                                    |
+| PRDs                  | `docs/prd/`                                                      |
+| Implementation plans  | `docs/plans/`                                                    |
+| Invariants doc        | `crates/muat-core/docs/Invariants.md`                            |
+| Mock PDS tests        | `crates/muat-xrpc/tests/mock_pds.rs`                             |
+| CLI integration tests | `crates/atproto-cli/tests/integration.rs`                        |
+| CI workflows          | `.github/workflows/`                                             |
 
 ## Common Tasks
 
@@ -139,10 +145,10 @@ cargo test -p atproto-cli --test integration
 
 ### Test Organization
 
-| Test Type | Location | Dependencies |
-|-----------|----------|--------------|
-| Unit tests | Inline in source files | None |
-| Mock PDS tests | `crates/muat-xrpc/tests/mock_pds.rs` | `wiremock` |
+| Test Type       | Location                                  | Dependencies         |
+| --------------- | ----------------------------------------- | -------------------- |
+| Unit tests      | Inline in source files                    | None                 |
+| Mock PDS tests  | `crates/muat-xrpc/tests/mock_pds.rs`      | `wiremock`           |
 | CLI integration | `crates/atproto-cli/tests/integration.rs` | Real PDS credentials |
 
 Integration tests are skipped automatically if `ATPROTO_TEST_IDENTIFIER` is not set.
@@ -151,18 +157,18 @@ Integration tests are skipped automatically if `ATPROTO_TEST_IDENTIFIER` is not 
 
 Key dependencies and their purposes:
 
-| Dependency | Purpose |
-|------------|---------|
-| `reqwest` | HTTP client for XRPC |
-| `tokio-tungstenite` | WebSocket for subscriptions |
-| `serde` / `serde_json` | Serialization |
-| `clap` | CLI argument parsing |
-| `tracing` | Structured logging |
-| `thiserror` | Error type derivation |
-| `async-trait` | Async traits for PDS/session |
-| `fs2` | Cross-platform file locking for firehose |
-| `uuid` | DID generation for local accounts |
-| `bcrypt` | Password hashing for file backend |
+| Dependency             | Purpose                                  |
+| ---------------------- | ---------------------------------------- |
+| `reqwest`              | HTTP client for XRPC                     |
+| `tokio-tungstenite`    | WebSocket for subscriptions              |
+| `serde` / `serde_json` | Serialization                            |
+| `clap`                 | CLI argument parsing                     |
+| `tracing`              | Structured logging                       |
+| `thiserror`            | Error type derivation                    |
+| `async-trait`          | Async traits for PDS/session             |
+| `fs2`                  | Cross-platform file locking for firehose |
+| `uuid`                 | DID generation for local accounts        |
+| `bcrypt`               | Password hashing for file backend        |
 
 ## Code Style
 
