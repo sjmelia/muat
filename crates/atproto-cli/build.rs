@@ -7,32 +7,30 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/");
 
-    // Try to get version from git describe
-    let version = get_git_version().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let version = std::env::var("MUAT_BUILD_VERSION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(get_version_from_git)
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
     println!("cargo:rustc-env=ATPROTO_VERSION={}", version);
 }
 
-fn get_git_version() -> Option<String> {
-    // First try git describe with tags
-    let output = Command::new("git")
-        .args(["describe", "--tags", "--always"])
+fn get_version_from_git() -> Option<String> {
+    let pkg_version = env!("CARGO_PKG_VERSION");
+
+    let short_sha = Command::new("git")
+        .args(["rev-parse", "--short=7", "HEAD"])
         .output()
-        .ok()?;
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                String::from_utf8(output.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|value| value.trim().to_string())?;
 
-    if !output.status.success() {
-        return None;
-    }
-
-    let version = String::from_utf8(output.stdout).ok()?;
-    let version = version.trim();
-
-    if version.is_empty() {
-        return None;
-    }
-
-    // If it starts with 'v', strip it for cleaner output
-    let version = version.strip_prefix('v').unwrap_or(version);
-
-    Some(version.to_string())
+    Some(format!("{pkg_version}+{short_sha}"))
 }

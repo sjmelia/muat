@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          latest_tag=$(git describe --tags --abbrev=0 --match "v[0-9]*" 2>/dev/null || echo "v0.0.0")
+          latest_tag="${latest_tag#v}"
+          version_string="${latest_tag}+${short_sha}"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "version_string=${version_string}" >> "$GITHUB_OUTPUT"
+          echo "## Release Version" >> "$GITHUB_STEP_SUMMARY"
+          echo "${version_string}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+            ${{ runner.os }}-cargo-
+
+      - name: Build release
+        env:
+          MUAT_BUILD_VERSION: ${{ steps.version.outputs.version_string }}
+        shell: bash
+        run: cargo build --package atproto-cli --release
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          version_string="${{ steps.version.outputs.version_string }}"
+          mkdir -p dist
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            bin="target/release/atproto.exe"
+            cp "$bin" "dist/atproto.exe"
+            echo "${version_string}" > "dist/VERSION.txt"
+            sha256sum "dist/atproto.exe" > "dist/atproto.exe.sha256"
+          else
+            bin="target/release/atproto"
+            cp "$bin" "dist/atproto"
+            echo "${version_string}" > "dist/VERSION.txt"
+            sha256sum "dist/atproto" > "dist/atproto.sha256"
+          fi
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: dist/*

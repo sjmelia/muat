@@ -165,3 +165,18 @@ Key dependencies and their purposes:
 - muat-xrpc README: `crates/muat-xrpc/README.md`
 - muat-file README: `crates/muat-file/README.md`
 - CLI README: `crates/atproto-cli/README.md`
+
+## CI and Branch Protection
+
+CI workflows run on pull requests and pushes. GitHub branch protection rules must be configured in repository settings to require the CI workflow checks for merges into `main`. This cannot be enforced by workflow code alone.
+
+If you add crates.io publishing to CI, store a `CARGO_REGISTRY_TOKEN` (or `CRATES_IO_TOKEN`) secret in GitHub Settings and reference it in the workflow environment.
+
+## Release Process
+
+1. Bump versions in the relevant `Cargo.toml` files.
+2. Commit and merge to `main`.
+3. Tag the `main` commit with `vX.Y.Z` and push the tag.
+4. The `release.yml` workflow builds release binaries and creates a GitHub Release.
+
+Version output is embedded at build time. `atproto --version` prints `{semver}+{short_sha}` using `MUAT_BUILD_VERSION` when set by CI, otherwise it falls back to `CARGO_PKG_VERSION+<git short sha>`.

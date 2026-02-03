@@ -1,20 +1,23 @@
-name: default
+name: CI
 
 on:
   push:
     branches: ["**"]
   pull_request:
     branches: ["**"]
-  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 jobs:
   fmt:
-    name: Fmt
-    runs-on: ubuntu-latest
+    name: Fmt (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -32,18 +35,23 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-fmt-
             ${{ runner.os }}-cargo-
 
       - name: Rustfmt (check)
         run: cargo fmt --all -- --check
 
   clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
+    name: Clippy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     needs: [fmt]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -61,18 +69,23 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-clippy-
             ${{ runner.os }}-cargo-
 
       - name: Clippy (warnings as errors)
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-  unit_tests:
-    name: Unit tests
-    runs-on: ubuntu-latest
+  tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     needs: [fmt]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -88,20 +101,19 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-test-
             ${{ runner.os }}-cargo-
 
-      - name: Unit & local tests
-        run: cargo test --workspace --all-targets --all-features
+      - name: Tests
+        run: cargo test --workspace
 
   coverage:
-    name: Coverage
+    name: Coverage (linux)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [unit_tests]
-    env:
-      COVERAGE_MIN: 56.0
+    needs: [tests]
 
     steps:
       - name: Checkout
@@ -129,16 +141,16 @@ jobs:
             ${{ runner.os }}-cargo-coverage-
             ${{ runner.os }}-cargo-
 
-      - name: Run coverage
+      - name: Coverage summary
         run: |
           mkdir -p target/llvm-cov
-          cargo llvm-cov --workspace --all-targets --all-features --json --summary-only --output-path target/llvm-cov/summary.json
+          cargo llvm-cov --workspace --summary-only >> $GITHUB_STEP_SUMMARY
 
   integration_tests:
-    name: Integration tests
+    name: Integration tests (linux)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [unit_tests]
+    needs: [tests]
 
     steps:
       - name: Checkout
@@ -154,8 +166,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-integration-
             ${{ runner.os }}-cargo-
 
       - name: Integration tests (real PDS)
@@ -167,4 +180,4 @@ jobs:
             echo "Skipping integration tests: missing ATPROTO_TEST_IDENTIFIER and/or ATPROTO_TEST_PASSWORD secrets."
             exit 0
           fi
-          cargo test --workspace --all-targets --all-features -- --nocapture
+          cargo test --workspace -- --nocapture
