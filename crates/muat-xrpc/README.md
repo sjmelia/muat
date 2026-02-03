@@ -3,6 +3,7 @@
 XRPC-backed PDS implementation for AT Protocol.
 
 This crate provides:
+
 - `XrpcPds` (implements `muat_core::traits::Pds`)
 - `XrpcSession` (implements `muat_core::traits::Session`)
 - `XrpcFirehose` (implements `muat_core::traits::Firehose`)

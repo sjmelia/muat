@@ -1,23 +1,41 @@
 # µat
 
-µat is:
-- A minimal client for AT Protocol Personal Data Servers. (PDS)
-Rust toolkit for working with the AT Protocol (Bluesky's decentralized social network protocol).
+µat is a Rust toolkit for working with [AT Protocol](https://atproto.com/specs/atp) or AT/PDS-shaped filesystem stores, without requiring a full network PDS.
+
+> An “AT/PDS-shaped” store is one that preserves similar append-only record, firehose, and projection semantics as a network PDS, without implementing federation or hosting.
+
+- `muat-xrpc`: A minimal client for AT Protocol (ATproto) Personal Data Servers. (PDS)
+  - you can use this to build your own AT based apps
+- `muat-file`: An "AT/PDS shaped" local filesystem store.
+  - you can use this to test AT based apps, or build local apps with AT semantics.
+- `atproto-cli`: A command line utility for interrogating PDS shaped (file or xrpc) stores.
+  - you can use this to interrogate AT PDS servers, local AT/PDS-shaped stores, or post to [Bluesky](https://bsky.app).
 
 ## Overview
 
-µat provides foundational tools for interacting with AT Protocol Personal Data Servers (PDS). It's designed as a modular, layered architecture where protocol primitives are separate from application-specific behavior.
+ATproto has been described as a "[social filesystem](https://news.ycombinator.com/item?id=46665839)" and has some really interesting attributes:
 
-µat supports both **network PDS instances** (via HTTPS) and **local filesystem-backed PDS** (via `file://` URLs) for development and testing.
+- it can be distributed
+- it's event driven and built around projections (the firehose)
+- it's logically immutable (i.e. until an admin or a lawyer gets involved)
+
+Records themselves are typed through json-schema like "[lexicons](https://atproto.com/specs/lexicon)" and you
+can pretty much store anything in a PDS. Storing immutable JSON records and projecting them into a firehose
+makes for a nicely legible on-disk database format suitable for lots of different kinds of applications.
+
+That said, existing PDS implementations are pretty heavyweight. µat addresses this by providing a kind of "embedded PDS"
+that provides the same semantics as a real PDS; but just writes to the filesystem. It also provides a miniature XRPC client, as both a lightweight client and a conformance check the trait surface.
+
+If you want to talk _real_ AT in Rust; you might be better off using [ATrium](https://github.com/atrium-rs/atrium).
 
 ### Crates
 
-| Crate | Description | Docs |
-|-------|-------------|------|
-| `muat-core` | Core types, errors, and traits (`Pds`, `Session`, `Firehose`) | [README](crates/muat-core/README.md) |
-| `muat-xrpc` | XRPC-backed PDS implementation for real servers | [README](crates/muat-xrpc/README.md) |
-| `muat-file` | File-backed PDS implementation for local dev/testing | [README](crates/muat-file/README.md) |
-| `atproto-cli` | CLI tool for PDS exploration and debugging | [README](crates/atproto-cli/README.md) |
+| Crate         | Description                                                   | Docs                                   |
+| ------------- | ------------------------------------------------------------- | -------------------------------------- |
+| `muat-core`   | Core types, errors, and traits (`Pds`, `Session`, `Firehose`) | [README](crates/muat-core/README.md)   |
+| `muat-xrpc`   | XRPC-backed PDS implementation for real servers               | [README](crates/muat-xrpc/README.md)   |
+| `muat-file`   | File-backed PDS implementation for local apps & testing       | [README](crates/muat-file/README.md)   |
+| `atproto-cli` | CLI tool for PDS exploration and debugging                    | [README](crates/atproto-cli/README.md) |
 
 ## Quick Start
 
@@ -44,7 +62,9 @@ atproto pds login --identifier alice.bsky.social --password your-app-password
 atproto pds whoami
 
 # Create a record
-atproto pds create-record org.example.record --type org.example.record
+# this will inject and overwrite `$type` to match the passed type
+echo '{"$type":"i am the wrong type","text":"Hello from muat!","createdAt":"2026-02-03T12:00:00Z"}' \
+| atproto pds create-record app.bsky.feed.post --type app.bsky.feed.post --json -
 
 # List records in a collection
 atproto pds list-records app.bsky.feed.post
@@ -59,7 +79,7 @@ atproto pds delete-record at://did:plc:xxx/org.example.record/yyy
 atproto pds subscribe
 ```
 
-### Local Development with file:// PDS
+### Querying local stores with file:// PDS
 
 ```bash
 # Create a local account
@@ -103,58 +123,27 @@ async fn main() -> Result<(), muat_core::Error> {
 
 ## Architecture
 
+```mermaid
+flowchart TB
+
+A1["Your apps"] --> L1
+A2["atproto-cli"] --> L1
+
+subgraph L1["µat"]
+  direction LR
+  B1["muat-core"]
+  B2["PDS-Shaped Interface"]
+end
+
+subgraph L2["Swappable Implementations"]
+  direction LR
+  C1["AT Protocol"]
+  C2["local files"]
+end
+
+B2 --> C1
+B2 --> C2
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Applications                          │
-│              (TUI, GUI, Agents, App-Views)              │
-├─────────────────────────────────────────────────────────┤
-│                    atproto-cli                           │
-│              (Thin CLI wrapper over muat)               │
-├─────────────────────────────────────────────────────────┤
-│             muat-xrpc / muat-file / muat-core           │
-│   (PDS implementations + shared types and traits)       │
-├─────────────────────────────────────────────────────────┤
-│                    AT Protocol                           │
-│                  (XRPC over HTTPS)                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Key Design Principles
-
-1. **Session-scoped auth** - All authenticated operations flow through a `Session` object
-2. **Strong typing** - Protocol types (`Did`, `Nsid`, `AtUri`, `RecordValue`) are validated at construction
-3. **Schema-agnostic** - Record values use `RecordValue` (guarantees `$type` field), not typed lexicons
-4. **Explicit over magic** - No hidden retries, no global state, no implicit defaults
-5. **Local-first development** - `file://` URLs enable offline development without a network PDS
-
-## Core Types
-
-| Type | Description |
-|------|-------------|
-| `Did` | Decentralized Identifier (`did:plc:...`, `did:web:...`) |
-| `Nsid` | Namespaced Identifier (`app.bsky.feed.post`) |
-| `AtUri` | AT Protocol URI (`at://did/collection/rkey`) |
-| `PdsUrl` | PDS URL (HTTPS for network, HTTP for localhost, `file://` for local) |
-| `RecordValue` | Validated record payload (JSON object with `$type` field) |
-| `Session` | Authenticated session with a PDS |
-| `Credentials` | Login identifier + password |
-
-## Configuration
-
-### CLI Session Storage
-
-Sessions are persisted in the XDG data directory:
-- Linux: `~/.local/share/atproto/session.json`
-- macOS: `~/Library/Application Support/atproto/session.json`
-
-### Logging
-
-The CLI supports verbosity levels:
-- Default: warnings only
-- `-v`: info level
-- `-vv`: debug level
-- `-vvv`: trace level
-- `--json-logs`: structured JSON output
 
 ## Development
 
@@ -190,6 +179,7 @@ The CI pipeline runs on every push and pull request:
 ### Builds from Main
 
 CI can produce release-style binaries from `main` for manual testing:
+
 - Triggered via workflow dispatch with `build_main: true`
 - Builds for Linux x86_64 and Windows x86_64
 - Artifacts available for 14 days
@@ -204,6 +194,7 @@ git push origin v0.2.0
 ```
 
 This triggers the release workflow which:
+
 - Builds binaries for Linux and Windows
 - Generates SHA256 checksums
 - Creates a GitHub Release with auto-generated notes
@@ -211,49 +202,7 @@ This triggers the release workflow which:
 
 ### Supported Platforms
 
-| Platform | Build | Tests |
-|----------|-------|-------|
-| Linux x86_64 | Yes | Unit + Integration |
-| Windows x86_64 | Yes | Unit only |
-
-### Project Structure
-
-```
-muat/
-├── Cargo.toml              # Workspace manifest
-├── crates/
-│   ├── muat-core/          # Core types, errors, and traits
-│   │   ├── src/
-│   │   │   ├── lib.rs
-│   │   │   ├── types/      # Did, Nsid, AtUri, PdsUrl, Rkey
-│   │   │   ├── repo/       # RecordValue, records, events
-│   │   │   ├── traits/     # Pds, Session, Firehose
-│   │   │   └── error.rs
-│   │   └── docs/
-│   │       └── Invariants.md
-│   ├── muat-xrpc/          # XRPC-backed PDS implementation
-│   ├── muat-file/          # File-backed PDS implementation
-│   └── atproto-cli/        # CLI tool
-│       ├── src/
-│       │   ├── main.rs
-│       │   ├── cli.rs
-│       │   ├── commands/   # pds subcommands
-│       │   ├── session/    # Session storage
-│       │   └── output.rs
-│       └── tests/
-│           └── integration.rs
-├── docs/
-│   ├── prd/                # Product requirements
-│   └── plans/              # Implementation plans
-└── .github/
-    └── workflows/          # CI/CD workflows
-```
-
-## License
-
-MIT OR Apache-2.0
-
-## Links
-
-- [AT Protocol Specification](https://atproto.com/specs/atp)
-- [Bluesky](https://bsky.app)
+| Platform       | Build | Tests              |
+| -------------- | ----- | ------------------ |
+| Linux x86_64   | Yes   | Unit + Integration |
+| Windows x86_64 | Yes   | Unit only          |

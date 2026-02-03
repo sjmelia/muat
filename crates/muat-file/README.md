@@ -3,6 +3,7 @@
 Filesystem-backed PDS implementation for local development and testing.
 
 This crate provides:
+
 - `FilePds` (implements `muat_core::traits::Pds`)
 - `FileSession` (implements `muat_core::traits::Session`)
 - `FileFirehose` (implements `muat_core::traits::Firehose`)

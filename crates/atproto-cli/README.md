@@ -64,11 +64,11 @@ Create a new session (login to a PDS).
 atproto pds login --identifier <HANDLE_OR_DID> --password <APP_PASSWORD> [--pds <URL>]
 ```
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--identifier`, `-i` | Handle or DID | Required |
-| `--password`, `-p` | App password | Required |
-| `--pds` | PDS URL | `https://bsky.social` |
+| Flag                 | Description   | Default               |
+| -------------------- | ------------- | --------------------- |
+| `--identifier`, `-i` | Handle or DID | Required              |
+| `--password`, `-p`   | App password  | Required              |
+| `--pds`              | PDS URL       | `https://bsky.social` |
 
 #### `pds whoami`
 
@@ -96,11 +96,11 @@ Create a new account in a local filesystem PDS.
 atproto pds create-account <HANDLE> --password <PASSWORD> [--pds <URL>]
 ```
 
-| Argument/Flag | Description | Default |
-|---------------|-------------|---------|
-| `<HANDLE>` | Handle for the new account | Required |
-| `--password` | Account password | Required |
-| `--pds` | Local PDS URL | `file://./pds` |
+| Argument/Flag | Description                | Default        |
+| ------------- | -------------------------- | -------------- |
+| `<HANDLE>`    | Handle for the new account | Required       |
+| `--password`  | Account password           | Required       |
+| `--pds`       | Local PDS URL              | `file://./pds` |
 
 This command only works with `file://` URLs. For network PDS, use the web interface.
 
@@ -112,13 +112,13 @@ Remove an account from a local filesystem PDS.
 atproto pds remove-account <DID> --password <PASSWORD> [--pds <URL>] [--delete-records] [-f/--force]
 ```
 
-| Argument/Flag | Description | Default |
-|---------------|-------------|---------|
-| `<DID>` | DID of the account to remove | Required |
-| `--password` | Account password | Required |
-| `--pds` | Local PDS URL | `file://./pds` |
-| `--delete-records` | Also delete all records | false |
-| `-f`, `--force` | Skip confirmation | false |
+| Argument/Flag      | Description                  | Default        |
+| ------------------ | ---------------------------- | -------------- |
+| `<DID>`            | DID of the account to remove | Required       |
+| `--password`       | Account password             | Required       |
+| `--pds`            | Local PDS URL                | `file://./pds` |
+| `--delete-records` | Also delete all records      | false          |
+| `-f`, `--force`    | Skip confirmation            | false          |
 
 ### Record Operations
 
@@ -130,13 +130,14 @@ Create a new record in a collection.
 atproto pds create-record <COLLECTION> --type <TYPE> [--json <FILE>]
 ```
 
-| Argument/Flag | Description | Default |
-|---------------|-------------|---------|
-| `<COLLECTION>` | Collection NSID | Required |
-| `--type`, `-t` | Record type ($type field) | Required |
-| `--json` | JSON file with record data (use `-` for stdin) | Empty object |
+| Argument/Flag  | Description                                    | Default      |
+| -------------- | ---------------------------------------------- | ------------ |
+| `<COLLECTION>` | Collection NSID                                | Required     |
+| `--type`, `-t` | Record type ($type field)                      | Required     |
+| `--json`       | JSON file with record data (use `-` for stdin) | Empty object |
 
 Examples:
+
 ```bash
 # Create a simple record
 atproto pds create-record org.example.record --type org.example.record
@@ -153,15 +154,16 @@ List records in a collection.
 atproto pds list-records <COLLECTION> [OPTIONS]
 ```
 
-| Argument/Flag | Description | Default |
-|---------------|-------------|---------|
-| `<COLLECTION>` | Collection NSID (e.g., `app.bsky.feed.post`) | Required |
-| `--repo` | Repository DID | Session DID |
-| `--limit` | Maximum number of records | None |
-| `--cursor` | Pagination cursor | None |
-| `--pretty` | Pretty-print JSON output | false |
+| Argument/Flag  | Description                                  | Default     |
+| -------------- | -------------------------------------------- | ----------- |
+| `<COLLECTION>` | Collection NSID (e.g., `app.bsky.feed.post`) | Required    |
+| `--repo`       | Repository DID                               | Session DID |
+| `--limit`      | Maximum number of records                    | None        |
+| `--cursor`     | Pagination cursor                            | None        |
+| `--pretty`     | Pretty-print JSON output                     | false       |
 
 Examples:
+
 ```bash
 # List your posts
 atproto pds list-records app.bsky.feed.post
@@ -181,14 +183,15 @@ Fetch a single record.
 atproto pds get-record [URI] [OPTIONS]
 ```
 
-| Argument/Flag | Description |
-|---------------|-------------|
-| `[URI]` | AT URI of the record |
-| `--repo` | Repository DID (alternative to URI) |
+| Argument/Flag  | Description                          |
+| -------------- | ------------------------------------ |
+| `[URI]`        | AT URI of the record                 |
+| `--repo`       | Repository DID (alternative to URI)  |
 | `--collection` | Collection NSID (alternative to URI) |
-| `--rkey` | Record key (alternative to URI) |
+| `--rkey`       | Record key (alternative to URI)      |
 
 Examples:
+
 ```bash
 # Using AT URI
 atproto pds get-record at://did:plc:xxx/app.bsky.feed.post/yyy
@@ -205,12 +208,12 @@ Delete a record.
 atproto pds delete-record [URI] [OPTIONS]
 ```
 
-| Argument/Flag | Description |
-|---------------|-------------|
-| `[URI]` | AT URI of the record to delete |
-| `--repo` | Repository DID (alternative to URI) |
+| Argument/Flag  | Description                          |
+| -------------- | ------------------------------------ |
+| `[URI]`        | AT URI of the record to delete       |
+| `--repo`       | Repository DID (alternative to URI)  |
 | `--collection` | Collection NSID (alternative to URI) |
-| `--rkey` | Record key (alternative to URI) |
+| `--rkey`       | Record key (alternative to URI)      |
 
 ### Streaming
 
@@ -222,29 +225,29 @@ Subscribe to repository events (firehose).
 atproto pds subscribe [OPTIONS]
 ```
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--pds` | PDS URL to subscribe to | Session PDS |
-| `--cursor` | Sequence number to start from | Latest |
+| Flag       | Description                   | Default     |
+| ---------- | ----------------------------- | ----------- |
+| `--pds`    | PDS URL to subscribe to       | Session PDS |
+| `--cursor` | Sequence number to start from | Latest      |
 
 The command outputs JSON events for commits, identity changes, handle updates, account status, and tombstones.
 
 ## Global Options
 
-| Flag | Description |
-|------|-------------|
+| Flag              | Description                        |
+| ----------------- | ---------------------------------- |
 | `-v`, `--verbose` | Increase verbosity (-v, -vv, -vvv) |
-| `--json-logs` | Output logs as JSON |
+| `--json-logs`     | Output logs as JSON                |
 
 ## Session Storage
 
 Sessions are persisted in the XDG data directory:
 
-| Platform | Path |
-|----------|------|
-| Linux | `~/.local/share/atproto/session.json` |
-| macOS | `~/Library/Application Support/atproto/session.json` |
-| Windows | `{FOLDERID_RoamingAppData}/atproto/session.json` |
+| Platform | Path                                                 |
+| -------- | ---------------------------------------------------- |
+| Linux    | `~/.local/share/atproto/session.json`                |
+| macOS    | `~/Library/Application Support/atproto/session.json` |
+| Windows  | `{FOLDERID_RoamingAppData}/atproto/session.json`     |
 
 ## Testing
 
@@ -262,10 +265,10 @@ Tests are skipped automatically if credentials are not set.
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Error (see stderr for details) |
+| Code | Meaning                        |
+| ---- | ------------------------------ |
+| 0    | Success                        |
+| 1    | Error (see stderr for details) |
 
 ## License
 
