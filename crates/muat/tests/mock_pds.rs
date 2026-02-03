@@ -3,7 +3,7 @@
 //! These tests use wiremock to simulate a PDS server and test the library's
 //! behavior without requiring network access or real credentials.
 
-use muat::{Credentials, Nsid, PdsUrl, Session};
+use muat::{Credentials, Nsid, Pds, PdsUrl};
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -37,9 +37,9 @@ async fn test_login_success() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
+    let pds = Pds::open(mock_pds_url(&server));
     let credentials = Credentials::new("alice.test", "secret123");
-    let session = Session::login(&pds, credentials).await.unwrap();
+    let session = pds.login(credentials).await.unwrap();
 
     assert_eq!(session.did().as_str(), "did:plc:test123");
 }
@@ -57,9 +57,9 @@ async fn test_login_invalid_credentials() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
+    let pds = Pds::open(mock_pds_url(&server));
     let credentials = Credentials::new("bad@user", "wrongpass");
-    let result = Session::login(&pds, credentials).await;
+    let result = pds.login(credentials).await;
 
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
@@ -95,16 +95,16 @@ async fn test_session_refresh_success() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
+    let pds = Pds::open(mock_pds_url(&server));
     let credentials = Credentials::new("alice.test", "secret");
-    let session = Session::login(&pds, credentials).await.unwrap();
+    let session = pds.login(credentials).await.unwrap();
 
     // Refresh should succeed
     session.refresh().await.unwrap();
 
     // Verify the new token is used (by checking export)
     let new_token = session.export_access_token().await;
-    assert_eq!(new_token, "new-access-token");
+    assert_eq!(new_token.as_deref(), Some("new-access-token"));
 }
 
 #[tokio::test]
@@ -131,9 +131,9 @@ async fn test_session_refresh_expired_token() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
+    let pds = Pds::open(mock_pds_url(&server));
     let credentials = Credentials::new("alice.test", "secret");
-    let session = Session::login(&pds, credentials).await.unwrap();
+    let session = pds.login(credentials).await.unwrap();
 
     let result = session.refresh().await;
     assert!(result.is_err());
@@ -179,8 +179,9 @@ async fn test_list_records_success() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
-    let session = Session::login(&pds, Credentials::new("alice.test", "secret"))
+    let pds = Pds::open(mock_pds_url(&server));
+    let session = pds
+        .login(Credentials::new("alice.test", "secret"))
         .await
         .unwrap();
 
@@ -227,8 +228,9 @@ async fn test_list_records_empty() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
-    let session = Session::login(&pds, Credentials::new("alice.test", "secret"))
+    let pds = Pds::open(mock_pds_url(&server));
+    let session = pds
+        .login(Credentials::new("alice.test", "secret"))
         .await
         .unwrap();
 
@@ -267,8 +269,9 @@ async fn test_create_record_success() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
-    let session = Session::login(&pds, Credentials::new("alice.test", "secret"))
+    let pds = Pds::open(mock_pds_url(&server));
+    let session = pds
+        .login(Credentials::new("alice.test", "secret"))
         .await
         .unwrap();
 
@@ -307,8 +310,9 @@ async fn test_delete_record_success() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
-    let session = Session::login(&pds, Credentials::new("alice.test", "secret"))
+    let pds = Pds::open(mock_pds_url(&server));
+    let session = pds
+        .login(Credentials::new("alice.test", "secret"))
         .await
         .unwrap();
 
@@ -336,9 +340,9 @@ async fn test_non_json_error_response() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
+    let pds = Pds::open(mock_pds_url(&server));
     let credentials = Credentials::new("alice.test", "secret");
-    let result = Session::login(&pds, credentials).await;
+    let result = pds.login(credentials).await;
 
     assert!(result.is_err());
     // Should handle non-JSON error gracefully
@@ -356,9 +360,9 @@ async fn test_empty_error_response() {
         .mount(&server)
         .await;
 
-    let pds = mock_pds_url(&server);
+    let pds = Pds::open(mock_pds_url(&server));
     let credentials = Credentials::new("alice.test", "secret");
-    let result = Session::login(&pds, credentials).await;
+    let result = pds.login(credentials).await;
 
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

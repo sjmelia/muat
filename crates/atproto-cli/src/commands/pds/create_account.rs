@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 
 use muat::PdsUrl;
-use muat::backend::file::FilePdsBackend;
+use muat::pds::FilePds;
 
 use crate::output;
 
@@ -36,7 +36,7 @@ pub async fn run(args: CreateAccountArgs) -> Result<()> {
         .to_file_path()
         .context("Failed to convert file:// URL to path")?;
 
-    let backend = FilePdsBackend::new(&path);
+    let backend = FilePds::new(&path, pds_url);
     let did = backend
         .create_account_local(&args.handle)
         .context("Failed to create account")?;

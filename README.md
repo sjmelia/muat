@@ -1,6 +1,8 @@
 # µat
 
-A Rust toolkit for working with the AT Protocol (Bluesky's decentralized social network protocol).
+µat is:
+- A minimal client for AT Protocol Personal Data Servers. (PDS)
+Rust toolkit for working with the AT Protocol (Bluesky's decentralized social network protocol).
 
 ## Overview
 
@@ -12,7 +14,7 @@ A Rust toolkit for working with the AT Protocol (Bluesky's decentralized social 
 
 | Crate | Description | Docs |
 |-------|-------------|------|
-| `muat` | Core AT Protocol library - authentication, session management, repo operations, local PDS backend | [README](crates/muat/README.md) |
+| `muat` | Core AT Protocol library - authentication, session management, repo operations, PDS abstraction | [README](crates/muat/README.md) |
 | `atproto-cli` | CLI tool for PDS exploration and debugging | [README](crates/atproto-cli/README.md) |
 
 ## Quick Start
@@ -68,16 +70,17 @@ atproto pds remove-account did:plc:xxx --pds file://./pds
 ### Library Usage
 
 ```rust
-use muat::{Session, Credentials, PdsUrl, Nsid};
+use muat::{Credentials, Pds, PdsUrl, Nsid};
 
 #[tokio::main]
 async fn main() -> Result<(), muat::Error> {
     // Connect to a PDS
-    let pds = PdsUrl::new("https://bsky.social")?;
+    let pds_url = PdsUrl::new("https://bsky.social")?;
+    let pds = Pds::open(pds_url);
     let credentials = Credentials::new("alice.bsky.social", "app-password");
 
     // Create a session
-    let session = Session::login(&pds, credentials).await?;
+    let session = pds.login(credentials).await?;
     println!("Logged in as: {}", session.did());
 
     // List records
@@ -217,10 +220,9 @@ muat/
 │   │   ├── src/
 │   │   │   ├── lib.rs
 │   │   │   ├── types/      # Did, Nsid, AtUri, PdsUrl, Rkey
-│   │   │   ├── auth/       # Credentials, Session, Tokens
-│   │   │   ├── xrpc/       # HTTP client, endpoints
-│   │   │   ├── repo/       # Repository operations, RecordValue
-│   │   │   ├── backend/    # PDS backends (file://)
+│   │   │   ├── account/    # Credentials, Tokens
+│   │   │   ├── pds/        # Pds, Session, FilePds/XrpcPds, firehose
+│   │   │   ├── repo/       # Repository operations, RecordValue, events
 │   │   │   └── error.rs
 │   │   └── docs/
 │   │       └── Invariants.md

@@ -6,12 +6,13 @@
 //! # Example
 //!
 //! ```no_run
-//! use muat::{Session, Credentials, PdsUrl, Nsid};
+//! use muat::{Credentials, Pds, PdsUrl, Nsid};
 //!
 //! # async fn example() -> Result<(), muat::Error> {
-//! let pds = PdsUrl::new("https://bsky.social")?;
+//! let pds_url = PdsUrl::new("https://bsky.social")?;
+//! let pds = Pds::open(pds_url);
 //! let credentials = Credentials::new("alice.bsky.social", "app-password");
-//! let session = Session::login(&pds, credentials).await?;
+//! let session = pds.login(credentials).await?;
 //!
 //! let collection = Nsid::new("app.bsky.feed.post")?;
 //! let records = session.list_records(&session.did(), &collection, None, None).await?;
@@ -23,16 +24,16 @@
 //! # }
 //! ```
 
-pub mod auth;
-pub mod backend;
+pub mod account;
 pub mod error;
+pub mod pds;
 pub mod repo;
 pub mod types;
-pub mod xrpc;
 
 // Re-export primary types at crate root for convenience
-pub use auth::{Credentials, Session};
+pub use account::Credentials;
 pub use error::Error;
+pub use pds::{Pds, RepoEventStream, Session};
 pub use repo::RecordValue;
 pub use types::{AtUri, Did, Nsid, PdsUrl, Rkey};
 

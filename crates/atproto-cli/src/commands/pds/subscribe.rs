@@ -5,6 +5,7 @@ use clap::Args;
 use colored::Colorize;
 use futures_util::StreamExt;
 
+use muat::Pds;
 use muat::repo::RepoEvent;
 
 use crate::session::storage;
@@ -37,8 +38,9 @@ pub async fn run(args: SubscribeArgs) -> Result<()> {
     let json_output = args.json;
     let filter = args.filter.clone();
 
-    let mut stream = session
-        .subscribe_repos_from(args.cursor)
+    let pds = Pds::open(session.pds().clone());
+    let mut stream = pds
+        .firehose_from(args.cursor)
         .context("Failed to start subscription")?;
 
     while let Some(result) = stream.next().await {

@@ -1,5 +1,8 @@
 # Implementation Plan: muat Core Library
 
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+
+
 ## Overview
 
 This plan details the implementation of `muat`, the core AT Protocol library. The library provides foundational protocol primitives with a session-centric API design.

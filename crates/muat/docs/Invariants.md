@@ -15,9 +15,9 @@ Any code or downstream crate using `muat` must respect these invariants.
 
 ## Design Principles
 
-1. **Session-first capability**
-   - Authenticated operations require a `Session`.
-   - No free functions for authenticated endpoints.
+1. **Session-scoped authentication**
+   - Authenticated operations require a `Session` value.
+   - No free functions that accept raw tokens.
 
 2. **Strong types at API boundaries**
    - Use `Nsid`, `AtUri`, `Did`, etc., not `String`.
@@ -81,6 +81,15 @@ Represents the base URL of a PDS (XRPC server).
 
 ---
 
+### `Pds`
+Represents a concrete PDS handle (file-backed or network-backed).
+
+**Invariant**
+- `Pds::open(PdsUrl)` selects the implementation based on URL scheme
+- `Pds` is the entry point for login, account management, and firehose access
+
+---
+
 ### `Credentials`
 Represents login inputs.
 
@@ -110,7 +119,7 @@ The central capability object for authenticated operations.
 **Holds**
 - `did: Did`
 - `pds: PdsUrl`
-- `access_token: AccessToken`
+- `access_token: Option<AccessToken>`
 - `refresh_token: Option<RefreshToken>`
 - `expires_at: Option<DateTime<Utc>>` (if known)
 
@@ -119,9 +128,9 @@ The central capability object for authenticated operations.
 2. A `Session` always targets exactly one PDS.
 3. All authenticated endpoint calls require a `&Session`.
 4. Session construction is only via:
-   - `Session::login(...)`
+   - `Pds::login(...)`
    - `Session::from_persisted(...)` (if implemented)
-   - `Session::refresh(...)` (returns a new/updated session)
+   - `Session::refresh(...)` (updates tokens in-place)
 
 **Concurrency**
 - `Session` must be cheap to clone or share (eg `Arc<SessionInner>`), OR be explicitly non-clone with clear sharing guidance.
@@ -171,7 +180,14 @@ All authenticated endpoints are methods on `Session`, including:
 - `get_record(...)`
 - `create_record_raw(...)`
 - `delete_record(...)`
-- `subscribe_repos(...)`
+
+### PDS-scoped endpoints
+PDS-scoped endpoints are methods on `Pds`, including:
+
+- `login(...)` (returns `Session`)
+- `create_account(...)`
+- `delete_account(...)`
+- `firehose(...)` / `firehose_from(...)`
 
 **Forbidden**
 - `muat::repo::list_records(access_token: ..., ...)` (token plumbing outside session)
@@ -273,7 +289,7 @@ The following invariants emerged during implementation and are now normative:
 ### Streaming/Subscription (PRD-008)
 
 **Uniform Stream API**
-- `session.subscribe_repos()` returns `RepoEventStream` for BOTH file:// and https:// PDS URLs
+- `pds.firehose()` returns `RepoEventStream` for BOTH file:// and https:// PDS URLs
 - The same `RepoEvent` type is used for both backends
 - Consumers do NOT need to check which backend is in use
 
@@ -285,7 +301,7 @@ The following invariants emerged during implementation and are now normative:
 
 **File-based Subscription**
 - Uses `notify` crate to watch `firehose.jsonl`
-- Converts `FirehoseEvent` to `RepoEvent::Commit`
+- Converts log entries to `RepoEvent::Commit`
 - Tails from current file position (no replay)
 
 **Network Subscription**
@@ -369,7 +385,7 @@ pub fn xrpc_url(&self, method: &str) -> String {
 
 ---
 
-### Filesystem PDS Backend (PRD-008 updates)
+### Filesystem PDS (PRD-008 updates)
 
 **Directory Structure (Repo-Centric)**
 ```
@@ -413,44 +429,38 @@ The layout is **repo-centric**: each DID owns a repository containing its collec
 
 ---
 
-### PDS Backend Unification (PRD-007)
+### PDS Abstraction
 
 **Overview**
-`PdsBackend` is the unified interface for record operations. Both network (XRPC) and filesystem implementations use this trait.
+`Pds` is the primary entry point for PDS-scoped operations. It provides a uniform
+interface over file-backed and XRPC-backed servers.
 
-**Backend Types**
-- `FilePdsBackend`: Filesystem-backed storage for local development
-- `XrpcPdsBackend`: Network-backed storage via XRPC protocol
-- `BackendKind`: Concrete enum holding either backend type (avoids dynamic dispatch)
+**PDS Types**
+- `FilePds`: Filesystem-backed PDS for local development
+- `XrpcPds`: Network-backed PDS via XRPC protocol
+- `Pds`: Public handle that selects the appropriate implementation based on `PdsUrl`
 
-**Token Handling Invariants**
-- Backend methods accept an optional `token` parameter for authenticated operations
-- Network backends (`XrpcPdsBackend`) REQUIRE a token for authenticated operations
-- Filesystem backends (`FilePdsBackend`) IGNORE the token parameter
-- `Session` supplies tokens automatically when delegating to the backend
-
-**Backend Selection Invariants**
-- `create_backend(&PdsUrl)` selects the appropriate backend based on URL scheme
-- `file://` URLs → `FilePdsBackend`
-- `http://` and `https://` URLs → `XrpcPdsBackend`
+**PDS Selection Invariants**
+- `Pds::open(PdsUrl)` selects the appropriate implementation by URL scheme
+- `file://` URLs → `FilePds`
+- `http://` / `https://` URLs → `XrpcPds`
 - Selection is deterministic and based solely on the URL scheme
 
 **Session Integration**
-- `Session` holds a `BackendKind` internally
-- Record operations on `Session` delegate to the backend with the access token
-- `Session::backend()` exposes the underlying backend for advanced use
-- `Session` remains the public entry point for authenticated operations
+- `Pds::login(...)` returns an authenticated `Session`
+- `Session` is the only place where tokens are stored
+- `Session` methods never accept raw tokens
+
+**Firehose Invariants**
+- Firehose is a PDS-scoped stream, not an authenticated session method
+- `Pds::firehose()` returns `RepoEventStream`
+- File-backed firehose is append-only: `$ROOT/pds/firehose.jsonl`
 
 **Account Management**
-- `PdsBackend::create_account()` creates accounts (no token required for local, varies for network)
-- `PdsBackend::delete_account()` deletes accounts (requires token and password for network)
-- Filesystem backend generates `did:plc:<uuid>` identifiers locally
-- Network backend calls the XRPC `createAccount`/`deleteAccount` endpoints
-
-**Concrete Backend Storage**
-- Session uses a concrete enum (`BackendKind`) rather than `dyn PdsBackend`
-- This avoids dynamic dispatch and keeps types explicit
-- The set of backends is closed and known at compile time
+- `Pds::create_account()` creates accounts (no token required for local, varies for network)
+- `Pds::delete_account()` deletes accounts (requires token and password for network)
+- Filesystem PDS generates `did:plc:<uuid>` identifiers locally
+- Network PDS calls the XRPC `createAccount`/`deleteAccount` endpoints
 
 ---
 
@@ -461,5 +471,5 @@ The layout is **repo-centric**: each DID owns a repository containing its collec
 - All authenticated operations are methods on `Session`
 - Error type is unified and does not leak secrets
 - `file://` URLs enable local development without network PDS
-- `PdsBackend` trait provides unified interface for both file and network backends
-- `Session` delegates record operations to the backend internally
+- `Pds` provides unified access for both file and network PDS implementations
+- `Session` performs authenticated record operations without token plumbing

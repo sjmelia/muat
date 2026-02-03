@@ -1,5 +1,8 @@
 # PRD-006: Local Filesystem PDS backend for `muat` via `file://`
 
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+
+
 ## Status
 
 Done

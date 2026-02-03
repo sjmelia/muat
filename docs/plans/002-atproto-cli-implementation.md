@@ -1,5 +1,8 @@
 # Implementation Plan: atproto-cli
 
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+
+
 ## Overview
 
 This plan details the implementation of `atproto`, the CLI tool for PDS exploration. It is a thin wrapper over `muat` with no protocol logic of its own.

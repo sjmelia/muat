@@ -1,5 +1,8 @@
 # Implementation Plan: PRD-006 Local Filesystem PDS Backend
 
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+
+
 ## Overview
 
 This plan details the implementation of PRD-006, which adds a `file://` PDS URL mode to `muat` enabling local-only development and testing without a network PDS. Records are stored on the filesystem with an append-only firehose log.

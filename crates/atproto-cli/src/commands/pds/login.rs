@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use colored::Colorize;
 
-use muat::{Credentials, PdsUrl, Session};
+use muat::{Credentials, Pds, PdsUrl};
 
 use crate::output;
 use crate::session::storage;
@@ -30,7 +30,8 @@ pub async fn run(args: LoginArgs) -> Result<()> {
 
     eprintln!("{}", "Logging in...".dimmed());
 
-    let session = Session::login(&pds, credentials)
+    let session = Pds::open(pds)
+        .login(credentials)
         .await
         .context("Failed to login")?;
 

@@ -1,21 +1,21 @@
-//! Network-backed PDS implementation via XRPC.
-//!
-//! This module provides a network implementation of the PDS backend,
-//! using the XRPC protocol to communicate with a remote PDS.
+//! XRPC-backed PDS implementation and client.
 
-use async_trait::async_trait;
+mod client;
+mod endpoints;
+
 use tracing::{debug, instrument};
 
-use super::{CreateAccountOutput, PdsBackend};
 use crate::Result;
+use crate::account::Credentials;
 use crate::error::AuthError;
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
 use crate::types::{AtUri, Did, Nsid, PdsUrl};
-use crate::xrpc::{
-    CREATE_RECORD, CreateRecordRequest, CreateRecordResponse, DELETE_RECORD, DeleteRecordRequest,
-    GET_RECORD, GetRecordQuery, GetRecordResponse, LIST_RECORDS, ListRecordsQuery,
-    ListRecordsResponse, XrpcClient,
-};
+
+use super::firehose::RepoEventStream;
+use super::{CreateAccountOutput, Session};
+
+pub(crate) use client::XrpcClient;
+pub(crate) use endpoints::*;
 
 /// Endpoint for account creation.
 const CREATE_ACCOUNT: &str = "com.atproto.server.createAccount";
@@ -58,43 +58,86 @@ struct DeleteAccountRequest<'a> {
 }
 
 /// A network-backed PDS implementation using XRPC.
-///
-/// This backend communicates with a remote PDS server using the XRPC protocol.
-/// All authenticated operations require a valid access token.
 #[derive(Debug, Clone)]
-pub struct XrpcPdsBackend {
+pub struct XrpcPds {
+    pds: PdsUrl,
     client: XrpcClient,
 }
 
-impl XrpcPdsBackend {
-    /// Create a new XRPC backend for the given PDS URL.
+impl XrpcPds {
+    /// Create a new XRPC PDS for the given PDS URL.
     pub fn new(pds: PdsUrl) -> Self {
-        Self {
-            client: XrpcClient::new(pds),
-        }
+        let client = XrpcClient::new(pds.clone());
+        Self { pds, client }
     }
 
-    /// Returns the underlying XRPC client.
-    ///
-    /// This is useful for advanced operations not covered by the `PdsBackend` trait.
-    pub fn client(&self) -> &XrpcClient {
-        &self.client
+    /// Returns the PDS URL for this instance.
+    pub fn url(&self) -> &PdsUrl {
+        &self.pds
     }
-}
 
-#[async_trait]
-impl PdsBackend for XrpcPdsBackend {
+    pub async fn login(&self, credentials: Credentials) -> Result<Session> {
+        let request = CreateSessionRequest {
+            identifier: credentials.identifier(),
+            password: credentials.password(),
+        };
+
+        let response: CreateSessionResponse =
+            self.client.procedure(CREATE_SESSION, &request).await?;
+
+        let did = Did::new(&response.did)?;
+        Ok(Session::new_xrpc(
+            self.clone(),
+            did,
+            response.access_jwt,
+            Some(response.refresh_jwt),
+        ))
+    }
+
+    pub async fn refresh_session(&self, refresh_token: &str) -> Result<RefreshSessionResponse> {
+        self.client
+            .procedure_authed_no_body(REFRESH_SESSION, refresh_token)
+            .await
+    }
+
+    pub fn firehose_from(&self, cursor: Option<i64>) -> Result<RepoEventStream> {
+        let pds = self.pds.clone();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<crate::repo::RepoEvent>>(100);
+
+        tokio::spawn(async move {
+            match RepoEventStream::from_websocket(&pds, cursor).await {
+                Ok(mut stream) => {
+                    use futures_util::StreamExt;
+                    while let Some(event) = stream.next().await {
+                        if tx.send(event).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(e)).await;
+                }
+            }
+        });
+
+        let stream = async_stream::stream! {
+            while let Some(event) = rx.recv().await {
+                yield event;
+            }
+        };
+
+        Ok(RepoEventStream::new(stream))
+    }
+
     #[instrument(skip(self, value, token))]
-    async fn create_record(
+    pub(crate) async fn create_record(
         &self,
         repo: &Did,
         collection: &Nsid,
         value: &RecordValue,
         rkey: Option<&str>,
-        token: Option<&str>,
+        token: &str,
     ) -> Result<AtUri> {
-        let token = token.ok_or(AuthError::SessionExpired)?;
-
         debug!(repo = %repo, collection = %collection, "Creating record via XRPC");
 
         let request = CreateRecordRequest {
@@ -114,9 +157,7 @@ impl PdsBackend for XrpcPdsBackend {
     }
 
     #[instrument(skip(self, token))]
-    async fn get_record(&self, uri: &AtUri, token: Option<&str>) -> Result<Record> {
-        let token = token.ok_or(AuthError::SessionExpired)?;
-
+    pub(crate) async fn get_record(&self, uri: &AtUri, token: &str) -> Result<Record> {
         debug!(uri = %uri, "Getting record via XRPC");
 
         let query = GetRecordQuery {
@@ -137,16 +178,14 @@ impl PdsBackend for XrpcPdsBackend {
     }
 
     #[instrument(skip(self, token))]
-    async fn list_records(
+    pub(crate) async fn list_records(
         &self,
         repo: &Did,
         collection: &Nsid,
         limit: Option<u32>,
         cursor: Option<&str>,
-        token: Option<&str>,
+        token: &str,
     ) -> Result<ListRecordsOutput> {
-        let token = token.ok_or(AuthError::SessionExpired)?;
-
         debug!(repo = %repo, collection = %collection, "Listing records via XRPC");
 
         let query = ListRecordsQuery {
@@ -181,9 +220,7 @@ impl PdsBackend for XrpcPdsBackend {
     }
 
     #[instrument(skip(self, token))]
-    async fn delete_record(&self, uri: &AtUri, token: Option<&str>) -> Result<()> {
-        let token = token.ok_or(AuthError::SessionExpired)?;
-
+    pub(crate) async fn delete_record(&self, uri: &AtUri, token: &str) -> Result<()> {
         debug!(uri = %uri, "Deleting record via XRPC");
 
         let request = DeleteRecordRequest {
@@ -200,15 +237,13 @@ impl PdsBackend for XrpcPdsBackend {
     }
 
     #[instrument(skip(self, password))]
-    async fn create_account(
+    pub async fn create_account(
         &self,
         handle: &str,
         password: Option<&str>,
         email: Option<&str>,
         invite_code: Option<&str>,
     ) -> Result<CreateAccountOutput> {
-        debug!(handle = %handle, "Creating account via XRPC");
-
         let request = CreateAccountRequest {
             handle,
             password,
@@ -226,7 +261,7 @@ impl PdsBackend for XrpcPdsBackend {
     }
 
     #[instrument(skip(self, token, password))]
-    async fn delete_account(
+    pub async fn delete_account(
         &self,
         did: &Did,
         token: Option<&str>,
@@ -234,10 +269,8 @@ impl PdsBackend for XrpcPdsBackend {
     ) -> Result<()> {
         let token = token.ok_or(AuthError::SessionExpired)?;
         let password = password.ok_or(AuthError::InvalidCredentials(
-            "password required".to_string(),
+            "deleteAccount requires a password".to_string(),
         ))?;
-
-        debug!(did = %did, "Deleting account via XRPC");
 
         let request = DeleteAccountRequest {
             did: did.as_str(),
@@ -248,17 +281,5 @@ impl PdsBackend for XrpcPdsBackend {
         self.client
             .procedure_authed_no_response(DELETE_ACCOUNT, &request, token)
             .await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn backend_creation() {
-        let pds = PdsUrl::new("https://bsky.social").unwrap();
-        let backend = XrpcPdsBackend::new(pds);
-        assert!(backend.client().pds().as_str().contains("bsky.social"));
     }
 }

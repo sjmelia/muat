@@ -32,10 +32,15 @@ fn session_path() -> Result<PathBuf> {
 
 /// Save a session to disk.
 pub async fn save_session(session: &Session) -> Result<()> {
+    let access_token = session
+        .export_access_token()
+        .await
+        .context("Session has no access token to persist")?;
+
     let stored = StoredSession {
         did: session.did().to_string(),
         pds: session.pds().to_string(),
-        access_token: session.export_access_token().await,
+        access_token,
         refresh_token: session.export_refresh_token().await,
     };
 
@@ -69,13 +74,14 @@ pub async fn load_session() -> Result<Option<Session>> {
     let pds = PdsUrl::new(&stored.pds).context("Invalid PDS URL in session")?;
     let did = Did::new(&stored.did).context("Invalid DID in session")?;
 
-    let session = Session::from_persisted(pds.clone(), did, stored.access_token, stored.refresh_token);
+    let session =
+        Session::from_persisted(pds.clone(), did, stored.access_token, stored.refresh_token);
 
     // Try to refresh the session (only for network PDS, file:// doesn't need refresh)
-    if pds.is_network() {
-        if let Err(e) = session.refresh().await {
-            tracing::warn!(error = %e, "Failed to refresh session, using existing tokens");
-        }
+    if pds.is_network()
+        && let Err(e) = session.refresh().await
+    {
+        tracing::warn!(error = %e, "Failed to refresh session, using existing tokens");
     }
 
     Ok(Some(session))

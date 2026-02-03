@@ -1,5 +1,8 @@
 # PRD-001: muat — Core AT Protocol Library
 
+> Note: This document reflects an earlier design. The current implementation uses `Pds`/`Session`/`RepoEventStream` with firehose on `Pds`. See `crates/muat/README.md` and `crates/muat/docs/Invariants.md` for current rules.
+
+
 Status: done
 
 ## Purpose

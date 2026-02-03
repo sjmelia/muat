@@ -9,13 +9,13 @@ Core AT Protocol library for Rust.
 ## Features
 
 - **Strong typing** - Protocol types (`Did`, `Nsid`, `AtUri`, `PdsUrl`, `Rkey`, `RecordValue`) are validated at construction
-- **Session-centric API** - All authenticated operations require a `Session`
+- **Session-scoped auth** - All authenticated operations require a `Session`
 - **RecordValue type** - Guarantees record payloads are valid JSON objects with `$type` field
-- **Unified backend abstraction** - `PdsBackend` trait provides a single interface for record operations
-- **Local PDS backend** - Use `file://` URLs for offline development without a network PDS
-- **Network PDS backend** - `XrpcPdsBackend` implements the trait for network operations
+- **PDS abstraction** - `Pds` provides a uniform interface over file and network PDS instances
+- **Local PDS** - Use `file://` URLs for offline development without a network PDS
+- **Network PDS** - Uses XRPC for remote PDS instances
 - **Thread-safe** - `Session` uses `Arc<RwLock<...>>` internally for safe sharing
-- **Uniform streaming** - `subscribe_repos()` returns an async `Stream` for both file:// and https:// backends
+- **Uniform firehose** - `Pds::firehose()` returns an async `Stream` for both file:// and https:// PDS URLs
 
 ## Installation
 
@@ -29,16 +29,17 @@ muat = { path = "../muat" }  # Or from crates.io when published
 ## Quick Start
 
 ```rust
-use muat::{Session, Credentials, PdsUrl, Nsid};
+use muat::{Credentials, Pds, PdsUrl, Nsid};
 
 #[tokio::main]
 async fn main() -> Result<(), muat::Error> {
     // Connect to a PDS
-    let pds = PdsUrl::new("https://bsky.social")?;
+    let pds_url = PdsUrl::new("https://bsky.social")?;
+    let pds = Pds::open(pds_url);
     let credentials = Credentials::new("alice.bsky.social", "app-password");
 
     // Create a session
-    let session = Session::login(&pds, credentials).await?;
+    let session = pds.login(credentials).await?;
     println!("Logged in as: {}", session.did());
 
     // List records
@@ -61,6 +62,7 @@ async fn main() -> Result<(), muat::Error> {
 | `Nsid` | Namespaced Identifier (collection) | `app.bsky.feed.post` |
 | `AtUri` | AT Protocol URI | `at://did:plc:.../app.bsky.feed.post/...` |
 | `PdsUrl` | PDS URL (network or local) | `https://bsky.social`, `file:///tmp/pds` |
+| `Pds` | PDS handle (file or network) | - |
 | `Rkey` | Record key | `3jui7kd54zh2y` |
 | `RecordValue` | Validated record payload | `{"$type": "app.bsky.feed.post", ...}` |
 | `Session` | Authenticated session | - |
@@ -68,19 +70,28 @@ async fn main() -> Result<(), muat::Error> {
 
 ## API Reference
 
+### PDS Operations
+
+```rust
+// Open a PDS handle
+let pds = Pds::open(pds_url);
+
+// Login
+let session = pds.login(credentials).await?;
+
+// Firehose (PDS-scoped)
+let stream = pds.firehose()?;
+```
+
 ### Session Operations
 
 ```rust
-// Login
-let session = Session::login(&pds, credentials).await?;
-
-// Refresh tokens
+// Refresh tokens (network sessions)
 session.refresh().await?;
 
 // Access session info
-session.did()      // Returns &Did
-session.pds()      // Returns &PdsUrl
-session.backend()  // Returns &BackendKind (underlying backend)
+session.did()  // Returns &Did
+session.pds()  // Returns &PdsUrl
 ```
 
 ### Repository Operations
@@ -108,81 +119,35 @@ let response = session.create_record_raw(&nsid, record_value).await?;
 session.delete_record(&at_uri).await?;
 ```
 
-## Backend Architecture
+## PDS Architecture
 
-`muat` provides a unified `PdsBackend` trait for record operations. This allows the same code to work with both network and filesystem backends.
+`muat` uses a `Pds` handle for PDS-scoped operations. It selects the
+implementation based on the URL scheme:
 
-### Backend Selection
-
-Use `create_backend()` to automatically select the appropriate backend based on the PDS URL scheme:
-
-```rust
-use muat::backend::{create_backend, PdsBackend};
-use muat::PdsUrl;
-
-// File-based backend for local development
-let file_pds = PdsUrl::new("file:///tmp/my-pds")?;
-let file_backend = create_backend(&file_pds);
-assert!(file_backend.is_file());
-
-// Network backend for production
-let network_pds = PdsUrl::new("https://bsky.social")?;
-let network_backend = create_backend(&network_pds);
-assert!(network_backend.is_xrpc());
-```
-
-### Using Backends Directly
-
-For unauthenticated or local operations, you can use backends directly:
-
-```rust
-use muat::backend::{create_backend, PdsBackend};
-use muat::{PdsUrl, Did, Nsid, RecordValue};
-use serde_json::json;
-
-// Create a file backend for local testing
-let pds = PdsUrl::new("file:///tmp/test-pds")?;
-let backend = create_backend(&pds);
-
-// Create an account (local backends only)
-let output = backend.create_account("alice.local", None, None, None).await?;
-println!("Created account: {}", output.did);
-
-// Create a record (no token needed for file backend)
-let collection = Nsid::new("org.test.record")?;
-let value = RecordValue::new(json!({
-    "$type": "org.test.record",
-    "text": "test"
-}))?;
-let uri = backend.create_record(&output.did, &collection, &value, None, None).await?;
-
-// List records
-let result = backend.list_records(&output.did, &collection, Some(10), None, None).await?;
-```
+- `file://` → `FilePds`
+- `http://` / `https://` → `XrpcPds`
 
 ### Local Filesystem PDS
 
 For development and testing, you can use a local filesystem-backed PDS:
 
 ```rust
-use muat::backend::FilePdsBackend;
-use muat::{Did, Nsid, RecordValue};
+use muat::{Credentials, Pds, PdsUrl, Nsid, RecordValue};
 use serde_json::json;
 
-// Create a backend
-let backend = FilePdsBackend::new("/tmp/test-pds");
+let pds_url = PdsUrl::new("file:///tmp/test-pds")?;
+let pds = Pds::open(pds_url);
 
-// Create a local account
-let did = backend.create_account_local("alice.local")?;
+let output = pds.create_account("alice.local", None, None, None).await?;
+let session = pds.login(Credentials::new("alice.local", "unused")).await?;
 
-// Create records
 let collection = Nsid::new("org.test.record")?;
 let value = RecordValue::new(json!({
     "$type": "org.test.record",
     "text": "test"
 }))?;
 
-let uri = backend.create_record(&did, &collection, &value, None, None).await?;
+let uri = session.create_record(&collection, &value).await?;
 ```
 
 Directory structure (repo-centric):
@@ -193,33 +158,18 @@ $ROOT/pds/
 └── firehose.jsonl
 ```
 
-### Network PDS Backend
+### Firehose Streaming
 
-For network operations without a full Session:
-
-```rust
-use muat::backend::XrpcPdsBackend;
-use muat::PdsUrl;
-
-let pds = PdsUrl::new("https://bsky.social")?;
-let backend = XrpcPdsBackend::new(pds);
-
-// Network operations require a token
-let record = backend.get_record(&uri, Some(&access_token)).await?;
-```
-
-### Streaming
-
-Subscribe to repository events using the uniform stream API (works for both `file://` and `https://` PDS URLs):
+Subscribe to repository events using the uniform firehose API:
 
 ```rust
 use futures_util::StreamExt;
+use muat::{Pds, PdsUrl};
 use muat::repo::RepoEvent;
 
-// Get a stream of events (uniform for file:// and https://)
-let mut stream = session.subscribe_repos()?;
+let pds = Pds::open(PdsUrl::new("https://bsky.social")?);
+let mut stream = pds.firehose()?;
 
-// Process events
 while let Some(result) = stream.next().await {
     match result {
         Ok(RepoEvent::Commit(commit)) => {
@@ -232,8 +182,6 @@ while let Some(result) = stream.next().await {
     }
 }
 ```
-
-The stream integrates naturally with `tokio::select!` for concurrent event handling.
 
 ## Error Handling
 
@@ -259,8 +207,8 @@ match session.get_record(&uri).await {
 
 ## Design Principles
 
-1. **Session-first capability** - Authenticated operations require a `Session`; no free functions for authenticated endpoints
-2. **Unified backend abstraction** - `PdsBackend` trait provides a single interface for record operations across all implementations
+1. **Session-scoped auth** - Authenticated operations require a `Session`; no free functions for authenticated endpoints
+2. **PDS abstraction** - `Pds` provides a uniform entry point for file and network PDS instances
 3. **Strong types at API boundaries** - Use `Nsid`, `AtUri`, `Did`, etc., not `String`
 4. **Schema-agnostic record values** - The protocol layer does not interpret lexicon payloads
 5. **Explicitness over magic** - No hidden global state, no silent retries, no implicit defaults

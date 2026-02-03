@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use muat::backend::file::FilePdsBackend;
+use muat::pds::FilePds;
 use muat::{Did, PdsUrl};
 
 use crate::output;
@@ -47,7 +47,7 @@ pub async fn run(args: RemoveAccountArgs) -> Result<()> {
 
     let did = Did::new(&args.did).context("Invalid DID")?;
 
-    let backend = FilePdsBackend::new(&path);
+    let backend = FilePds::new(&path, pds_url);
 
     // Check account exists
     let account = backend

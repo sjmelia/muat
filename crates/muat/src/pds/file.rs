@@ -1,6 +1,6 @@
 //! Filesystem-backed PDS implementation.
 //!
-//! This module provides a local filesystem implementation of the PDS backend,
+//! This module provides a local filesystem implementation of the PDS,
 //! enabling local-only development and testing without a network PDS.
 //!
 //! ## Directory Structure
@@ -23,38 +23,33 @@
 //! This mirrors the AT Protocol data model where repositories belong to users (DIDs),
 //! and each repository contains collections of records.
 
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc as std_mpsc;
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-
-use async_trait::async_trait;
 use chrono::Utc;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
-use super::{CreateAccountOutput, PdsBackend};
+use super::{CreateAccountOutput, RepoEventStream, Session};
 use crate::Result;
+use crate::account::Credentials;
+use crate::error::AuthError;
 use crate::error::{Error, InvalidInputError, ProtocolError};
+use crate::pds::firehose::{FirehoseLogEvent, FirehoseLogOp};
 use crate::repo::{ListRecordsOutput, Record, RecordValue};
-use crate::types::{AtUri, Did, Nsid, Rkey};
+use crate::types::{AtUri, Did, Nsid, PdsUrl, Rkey};
 
 /// A filesystem-backed PDS implementation.
 ///
-/// This backend stores records as JSON files in a directory structure,
+/// This PDS stores records as JSON files in a directory structure,
 /// and maintains an append-only firehose log for event streaming.
-///
-/// ## Token Handling
-///
-/// This backend does not require authentication. Token parameters are
-/// accepted for API compatibility but are ignored.
 #[derive(Debug, Clone)]
-pub struct FilePdsBackend {
+pub struct FilePds {
     root: PathBuf,
+    url: PdsUrl,
 }
 
 /// Account metadata stored in the local PDS.
@@ -68,33 +63,18 @@ pub struct LocalAccount {
     pub created_at: String,
 }
 
-/// An event in the firehose log.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FirehoseEvent {
-    /// The AT URI of the affected record.
-    pub uri: String,
-    /// ISO 8601 timestamp.
-    pub time: String,
-    /// The operation type.
-    pub op: FirehoseOp,
-}
-
-/// The type of firehose operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FirehoseOp {
-    /// A record was created.
-    Create,
-    /// A record was deleted.
-    Delete,
-}
-
-impl FilePdsBackend {
-    /// Create a new filesystem backend with the given root directory.
-    pub fn new(root: impl AsRef<Path>) -> Self {
+impl FilePds {
+    /// Create a new filesystem PDS with the given root directory.
+    pub fn new(root: impl AsRef<Path>, url: PdsUrl) -> Self {
         Self {
             root: root.as_ref().to_path_buf(),
+            url,
         }
+    }
+
+    /// Returns the PDS URL for this instance.
+    pub fn url(&self) -> &PdsUrl {
+        &self.url
     }
 
     /// Get the root directory path.
@@ -149,7 +129,7 @@ impl FilePdsBackend {
         // Use current timestamp in microseconds as a simple TID
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_micros();
         format!("{:x}", now)
     }
@@ -165,7 +145,7 @@ impl FilePdsBackend {
     }
 
     /// Append an event to the firehose log.
-    fn append_firehose(&self, uri: &AtUri, op: FirehoseOp) -> Result<()> {
+    fn append_firehose(&self, uri: &AtUri, op: FirehoseLogOp) -> Result<()> {
         let firehose_path = self.firehose_path();
         let lock_path = self.firehose_lock_path();
 
@@ -187,7 +167,7 @@ impl FilePdsBackend {
             .map_err(|e| Error::Transport(e.into()))?;
 
         // Append event
-        let event = FirehoseEvent {
+        let event = FirehoseLogEvent {
             uri: uri.to_string(),
             time: Utc::now().to_rfc3339(),
             op,
@@ -222,8 +202,7 @@ impl FilePdsBackend {
     ///
     /// Returns the generated DID for the new account.
     ///
-    /// This is a convenience method that bypasses the `PdsBackend` trait.
-    /// For trait-based usage, use [`PdsBackend::create_account`].
+    /// This is a convenience method for the file-backed PDS.
     #[instrument(skip(self))]
     pub fn create_account_local(&self, handle: &str) -> Result<Did> {
         // Generate a local DID
@@ -369,197 +348,11 @@ impl FilePdsBackend {
     }
 
     // ========================================================================
-    // Firehose Watching
+    // Firehose
     // ========================================================================
 
-    /// Read all existing firehose events from the log file.
-    ///
-    /// This reads the entire firehose.jsonl file and returns all events.
-    /// Useful for catching up on events before starting to watch.
-    pub fn read_firehose(&self) -> Result<Vec<FirehoseEvent>> {
-        let firehose_path = self.firehose_path();
-
-        if !firehose_path.exists() {
-            return Ok(Vec::new());
-        }
-
-        let file = File::open(&firehose_path).map_err(|e| Error::Transport(e.into()))?;
-        let reader = BufReader::new(file);
-        let mut events = Vec::new();
-
-        for line in reader.lines() {
-            let line = line.map_err(|e| Error::Transport(e.into()))?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            match serde_json::from_str::<FirehoseEvent>(&line) {
-                Ok(event) => events.push(event),
-                Err(e) => {
-                    debug!(error = %e, line = %line, "Failed to parse firehose event");
-                }
-            }
-        }
-
-        Ok(events)
-    }
-
-    /// Watch the firehose for new events.
-    ///
-    /// Returns a channel receiver that emits firehose events as they are written.
-    /// The watcher is returned so the caller can keep it alive.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use muat::backend::FilePdsBackend;
-    ///
-    /// # async fn example() -> Result<(), muat::Error> {
-    /// let backend = FilePdsBackend::new("/path/to/pds");
-    /// let (rx, _watcher) = backend.watch_firehose()?;
-    ///
-    /// // In an async context, poll rx for events
-    /// while let Ok(event) = rx.recv() {
-    ///     println!("Firehose event: {:?}", event);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn watch_firehose(&self) -> Result<(std_mpsc::Receiver<FirehoseEvent>, FirehoseWatcher)> {
-        let firehose_path = self.firehose_path();
-        let pds_dir = self.pds_dir();
-
-        // Ensure the pds directory exists
-        fs::create_dir_all(&pds_dir).map_err(|e| Error::Transport(e.into()))?;
-
-        // Channel for sending events
-        let (tx, rx) = std_mpsc::channel::<FirehoseEvent>();
-
-        // Track file position for tailing
-        let initial_pos = if firehose_path.exists() {
-            fs::metadata(&firehose_path).map(|m| m.len()).unwrap_or(0)
-        } else {
-            0
-        };
-
-        let firehose_path_clone = firehose_path.clone();
-        let tx_clone = tx.clone();
-        let position = std::sync::Arc::new(std::sync::Mutex::new(initial_pos));
-        let position_clone = position.clone();
-
-        // Create file watcher
-        let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(event) = res {
-                // Only process modify/create events
-                if !matches!(
-                    event.kind,
-                    notify::EventKind::Modify(_) | notify::EventKind::Create(_)
-                ) {
-                    return;
-                }
-
-                // Check if the event is for our firehose file
-                let is_firehose = event
-                    .paths
-                    .iter()
-                    .any(|p| p.file_name().is_some_and(|n| n == "firehose.jsonl"));
-
-                if !is_firehose {
-                    return;
-                }
-
-                // Read new lines from the firehose
-                if let Ok(mut file) = File::open(&firehose_path_clone) {
-                    let mut pos = position_clone.lock().unwrap();
-                    if file.seek(SeekFrom::Start(*pos)).is_ok() {
-                        let reader = BufReader::new(&file);
-                        for line in reader.lines() {
-                            if let Ok(line) = line {
-                                if line.trim().is_empty() {
-                                    continue;
-                                }
-                                if let Ok(event) = serde_json::from_str::<FirehoseEvent>(&line) {
-                                    let _ = tx_clone.send(event);
-                                }
-                            }
-                        }
-                        // Update position
-                        if let Ok(new_pos) = file.stream_position() {
-                            *pos = new_pos;
-                        }
-                    }
-                }
-            }
-        })
-        .map_err(|e| {
-            Error::InvalidInput(InvalidInputError::Other {
-                message: format!("Failed to create file watcher: {}", e),
-            })
-        })?;
-
-        // Start watching the pds directory
-        let mut watcher = watcher;
-        watcher
-            .watch(&pds_dir, RecursiveMode::NonRecursive)
-            .map_err(|e| {
-                Error::InvalidInput(InvalidInputError::Other {
-                    message: format!("Failed to watch directory: {}", e),
-                })
-            })?;
-
-        Ok((
-            rx,
-            FirehoseWatcher {
-                _watcher: watcher,
-                tx,
-                firehose_path,
-                position,
-            },
-        ))
-    }
-}
-
-/// A handle to a running firehose watcher.
-///
-/// Keep this alive to continue receiving firehose events.
-/// When dropped, the watcher stops.
-pub struct FirehoseWatcher {
-    _watcher: RecommendedWatcher,
-    tx: std_mpsc::Sender<FirehoseEvent>,
-    firehose_path: PathBuf,
-    position: std::sync::Arc<std::sync::Mutex<u64>>,
-}
-
-impl FirehoseWatcher {
-    /// Manually poll for new events.
-    ///
-    /// This is useful when the file watcher may not trigger (e.g., on some platforms).
-    /// Returns the number of new events found.
-    pub fn poll(&self) -> usize {
-        let mut count = 0;
-
-        if let Ok(mut file) = File::open(&self.firehose_path) {
-            let mut pos = self.position.lock().unwrap();
-            if file.seek(SeekFrom::Start(*pos)).is_ok() {
-                let reader = BufReader::new(&file);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        if line.trim().is_empty() {
-                            continue;
-                        }
-                        if let Ok(event) = serde_json::from_str::<FirehoseEvent>(&line) {
-                            if self.tx.send(event).is_ok() {
-                                count += 1;
-                            }
-                        }
-                    }
-                }
-                if let Ok(new_pos) = file.stream_position() {
-                    *pos = new_pos;
-                }
-            }
-        }
-
-        count
+    pub fn firehose_from(&self, _cursor: Option<i64>) -> Result<RepoEventStream> {
+        RepoEventStream::from_file(self.root.clone())
     }
 }
 
@@ -572,16 +365,14 @@ impl From<std::io::Error> for crate::error::TransportError {
     }
 }
 
-#[async_trait]
-impl PdsBackend for FilePdsBackend {
-    #[instrument(skip(self, value, _token))]
-    async fn create_record(
+impl FilePds {
+    #[instrument(skip(self, value))]
+    pub(crate) async fn create_record(
         &self,
         repo: &Did,
         collection: &Nsid,
         value: &RecordValue,
         rkey: Option<&str>,
-        _token: Option<&str>,
     ) -> Result<AtUri> {
         let rkey = rkey
             .map(|s| s.to_string())
@@ -611,26 +402,25 @@ impl PdsBackend for FilePdsBackend {
         let uri = AtUri::from_parts(repo.clone(), collection.clone(), rkey_validated);
 
         // Append to firehose
-        self.append_firehose(&uri, FirehoseOp::Create)?;
+        self.append_firehose(&uri, FirehoseLogOp::Create)?;
 
         debug!(uri = %uri, "Created record");
 
         Ok(uri)
     }
 
-    #[instrument(skip(self, _token))]
-    async fn get_record(&self, uri: &AtUri, _token: Option<&str>) -> Result<Record> {
+    #[instrument(skip(self))]
+    pub(crate) async fn get_record(&self, uri: &AtUri) -> Result<Record> {
         self.get_record_internal(uri).await
     }
 
-    #[instrument(skip(self, _token))]
-    async fn list_records(
+    #[instrument(skip(self))]
+    pub(crate) async fn list_records(
         &self,
         repo: &Did,
         collection: &Nsid,
         limit: Option<u32>,
         cursor: Option<&str>,
-        _token: Option<&str>,
     ) -> Result<ListRecordsOutput> {
         let dir = self.repo_collections_dir(repo).join(collection.as_str());
 
@@ -691,15 +481,15 @@ impl PdsBackend for FilePdsBackend {
         Ok(ListRecordsOutput { records, cursor })
     }
 
-    #[instrument(skip(self, _token))]
-    async fn delete_record(&self, uri: &AtUri, _token: Option<&str>) -> Result<()> {
+    #[instrument(skip(self))]
+    pub(crate) async fn delete_record(&self, uri: &AtUri) -> Result<()> {
         let path = self.record_path(uri.collection(), uri.repo(), uri.rkey().as_str());
 
         if path.exists() {
             fs::remove_file(&path).map_err(|e| Error::Transport(e.into()))?;
 
             // Append to firehose
-            self.append_firehose(uri, FirehoseOp::Delete)?;
+            self.append_firehose(uri, FirehoseLogOp::Delete)?;
 
             debug!(uri = %uri, "Deleted record");
         }
@@ -708,7 +498,7 @@ impl PdsBackend for FilePdsBackend {
     }
 
     #[instrument(skip(self, _password))]
-    async fn create_account(
+    pub async fn create_account(
         &self,
         handle: &str,
         _password: Option<&str>,
@@ -723,7 +513,7 @@ impl PdsBackend for FilePdsBackend {
     }
 
     #[instrument(skip(self, _token, _password))]
-    async fn delete_account(
+    pub async fn delete_account(
         &self,
         did: &Did,
         _token: Option<&str>,
@@ -731,6 +521,24 @@ impl PdsBackend for FilePdsBackend {
     ) -> Result<()> {
         // For file backend, delete the account and all associated records
         self.remove_account(did, true)
+    }
+
+    pub async fn login(&self, credentials: Credentials) -> Result<Session> {
+        let identifier = credentials.identifier();
+
+        let account = if identifier.starts_with("did:") {
+            let did = Did::new(identifier)?;
+            self.get_account(&did)?
+        } else {
+            self.find_account_by_handle(identifier)?
+        }
+        .ok_or_else(|| {
+            AuthError::InvalidCredentials(format!("Account '{}' not found", identifier))
+        })?;
+
+        let did = Did::new(&account.did)?;
+
+        Ok(Session::new_file(self.clone(), did))
     }
 }
 
@@ -740,9 +548,10 @@ mod tests {
     use serde_json::json;
     use tempfile::TempDir;
 
-    fn create_test_backend() -> (TempDir, FilePdsBackend) {
+    fn create_test_backend() -> (TempDir, FilePds) {
         let tmp = TempDir::new().unwrap();
-        let backend = FilePdsBackend::new(tmp.path());
+        let url = PdsUrl::new(format!("file://{}", tmp.path().display())).unwrap();
+        let backend = FilePds::new(tmp.path(), url);
         (tmp, backend)
     }
 
@@ -792,13 +601,13 @@ mod tests {
         .unwrap();
 
         let uri = backend
-            .create_record(&did, &collection, &value, Some("testrkey"), None)
+            .create_record(&did, &collection, &value, Some("testrkey"))
             .await
             .unwrap();
 
         assert_eq!(uri.rkey().as_str(), "testrkey");
 
-        let record = backend.get_record(&uri, None).await.unwrap();
+        let record = backend.get_record(&uri).await.unwrap();
         assert_eq!(record.value.record_type(), "org.test.record");
         assert_eq!(record.value.get("text").unwrap(), "hello");
     }
@@ -818,19 +627,13 @@ mod tests {
             }))
             .unwrap();
             backend
-                .create_record(
-                    &did,
-                    &collection,
-                    &value,
-                    Some(&format!("rec{:03}", i)),
-                    None,
-                )
+                .create_record(&did, &collection, &value, Some(&format!("rec{:03}", i)))
                 .await
                 .unwrap();
         }
 
         let result = backend
-            .list_records(&did, &collection, Some(3), None, None)
+            .list_records(&did, &collection, Some(3), None)
             .await
             .unwrap();
         assert_eq!(result.records.len(), 3);
@@ -850,18 +653,18 @@ mod tests {
         .unwrap();
 
         let uri = backend
-            .create_record(&did, &collection, &value, Some("todelete"), None)
+            .create_record(&did, &collection, &value, Some("todelete"))
             .await
             .unwrap();
 
         // Record exists
-        assert!(backend.get_record(&uri, None).await.is_ok());
+        assert!(backend.get_record(&uri).await.is_ok());
 
         // Delete it
-        backend.delete_record(&uri, None).await.unwrap();
+        backend.delete_record(&uri).await.unwrap();
 
         // Record should be gone
-        assert!(backend.get_record(&uri, None).await.is_err());
+        assert!(backend.get_record(&uri).await.is_err());
     }
 
     #[tokio::test]
@@ -876,7 +679,7 @@ mod tests {
         .unwrap();
 
         backend
-            .create_record(&did, &collection, &value, None, None)
+            .create_record(&did, &collection, &value, None)
             .await
             .unwrap();
 
