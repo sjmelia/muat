@@ -28,13 +28,31 @@ struct StoredSession {
 
 /// Get the session file path.
 fn session_path() -> Result<PathBuf> {
-    let dirs =
-        ProjectDirs::from("", "", "atproto").context("Could not determine config directory")?;
+    if let Some(dir) = std::env::var_os("ATPROTO_DATA_DIR") {
+        let data_dir = PathBuf::from(dir);
+        fs::create_dir_all(&data_dir).context("Failed to create data directory")?;
+        return Ok(data_dir.join("session.json"));
+    }
 
-    let data_dir = dirs.data_dir();
-    fs::create_dir_all(data_dir).context("Failed to create data directory")?;
+    if let Some(dir) = std::env::var_os("XDG_DATA_HOME") {
+        let data_dir = PathBuf::from(dir).join("atproto");
+        fs::create_dir_all(&data_dir).context("Failed to create data directory")?;
+        return Ok(data_dir.join("session.json"));
+    }
 
-    Ok(data_dir.join("session.json"))
+    if let Some(dirs) = ProjectDirs::from("", "", "atproto") {
+        let data_dir = dirs.data_dir();
+        fs::create_dir_all(data_dir).context("Failed to create data directory")?;
+        return Ok(data_dir.join("session.json"));
+    }
+
+    if let Some(home) = std::env::var_os("HOME") {
+        let data_dir = PathBuf::from(home).join(".local").join("share").join("atproto");
+        fs::create_dir_all(&data_dir).context("Failed to create data directory")?;
+        return Ok(data_dir.join("session.json"));
+    }
+
+    anyhow::bail!("Could not determine config directory");
 }
 
 /// Save a session to disk.

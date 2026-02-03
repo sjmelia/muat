@@ -62,6 +62,7 @@ pub fn apply_home_env(cmd: &mut Command, home: &Path) {
     cmd.env("HOME", home);
     cmd.env("XDG_DATA_HOME", home.join("data"));
     cmd.env("XDG_CONFIG_HOME", home.join("config"));
+    cmd.env("ATPROTO_DATA_DIR", home.join("data").join("atproto"));
 
     #[cfg(windows)]
     {
