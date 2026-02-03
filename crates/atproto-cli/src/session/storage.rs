@@ -1,7 +1,6 @@
 //! Session storage for persisting login state.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -14,6 +13,9 @@ use muat_file::{FilePds, FileSession};
 use muat_xrpc::XrpcSession;
 
 use super::CliSession;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 /// Stored session data.
 #[derive(Debug, Serialize, Deserialize)]
