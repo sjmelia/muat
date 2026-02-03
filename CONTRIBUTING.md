@@ -176,6 +176,8 @@ CI workflows run on pull requests and pushes. GitHub branch protection rules mus
 
 If you add crates.io publishing to CI, store a `CARGO_REGISTRY_TOKEN` (or `CRATES_IO_TOKEN`) secret in GitHub Settings and reference it in the workflow environment.
 
+Bluesky PDS e2e tests are intentionally optional and only run when secrets are present and the workflow is not a pull request from a fork.
+
 ## Release Process
 
 1. Bump versions in the relevant `Cargo.toml` files.

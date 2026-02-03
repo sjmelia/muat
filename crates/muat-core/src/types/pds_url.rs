@@ -262,9 +262,19 @@ mod tests {
 
     #[test]
     fn file_url_to_path() {
-        let pds = PdsUrl::new("file:///tmp/test-pds").unwrap();
-        let path = pds.to_file_path().unwrap();
-        assert_eq!(path, std::path::PathBuf::from("/tmp/test-pds"));
+        #[cfg(unix)]
+        {
+            let pds = PdsUrl::new("file:///tmp/test-pds").unwrap();
+            let path = pds.to_file_path().unwrap();
+            assert_eq!(path, std::path::PathBuf::from("/tmp/test-pds"));
+        }
+
+        #[cfg(windows)]
+        {
+            let pds = PdsUrl::new("file:///C:/tmp/test-pds").unwrap();
+            let path = pds.to_file_path().unwrap();
+            assert_eq!(path, std::path::PathBuf::from(r"C:\tmp\test-pds"));
+        }
     }
 
     #[test]

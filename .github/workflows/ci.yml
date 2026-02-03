@@ -1,119 +1,24 @@
 name: CI
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
     branches: ["**"]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  fmt:
-    name: Fmt (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust (rustfmt)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fmt-
-            ${{ runner.os }}-cargo-
-
-      - name: Rustfmt (check)
-        run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    needs: [fmt]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust (clippy)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-clippy-
-            ${{ runner.os }}-cargo-
-
-      - name: Clippy (warnings as errors)
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-  tests:
-    name: Tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    needs: [fmt]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
-            ${{ runner.os }}-cargo-
-
-      - name: Unit tests
-        run: cargo test --workspace --lib --bins
-
-  coverage:
-    name: Coverage (linux)
+  linux:
+    name: CI (linux)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [tests]
 
     steps:
       - name: Checkout
@@ -122,7 +27,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          components: rustfmt, clippy, llvm-tools-preview
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
@@ -136,70 +41,56 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-coverage-
             ${{ runner.os }}-cargo-
+
+      # Branch protection gates are configured in GitHub settings, not in workflow code.
+      - name: Fmt
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --workspace --lib --bins
+
+      - name: File PDS integration
+        run: cargo test -p atproto-cli --test file_pds
+
+      - name: Windows target check
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo check --workspace --target x86_64-pc-windows-msvc
 
       - name: Coverage summary
         run: |
           mkdir -p target/llvm-cov
-          cargo llvm-cov --workspace --lib --bins --summary-only >> "$GITHUB_STEP_SUMMARY"
-          #cargo llvm-cov --workspace --lib --bins --summary-only --json --output-path target/llvm-cov/summary.json
-          #python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          #import json
-          #with open('target/llvm-cov/summary.json', 'r', encoding='utf-8') as f:
-          #    data = json.load(f)
-          #totals = data['data'][0]['totals']
-          #lines = totals['lines']['percent']
-          #functions = totals['functions']['percent']
-          #regions = totals['regions']['percent']
-          #print('## Coverage')
-          #print(f'- Lines: {lines:.2f}%')
-          #print(f'- Functions: {functions:.2f}%')
-          #print(f'- Regions: {regions:.2f}%')
-          #PY
+          cargo llvm-cov --workspace --lib --bins --summary-only --json --output-path target/llvm-cov/summary.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          with open('target/llvm-cov/summary.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          totals = data['data'][0]['totals']
+          lines = totals['lines']['percent']
+          functions = totals['functions']['percent']
+          regions = totals['regions']['percent']
+          print('## Coverage')
+          print(f'- Lines: {lines:.2f}%')
+          print(f'- Functions: {functions:.2f}%')
+          print(f'- Regions: {regions:.2f}%')
+          PY
 
-  integration_tests:
-    name: Integration tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    needs: [tests]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-integration-
-            ${{ runner.os }}-cargo-
-
-      - name: Integration tests (file PDS)
-        run: cargo test -p atproto-cli --test file_pds
-
-      - name: Integration tests (real PDS)
+      # Bluesky e2e is intentionally optional and never runs on PRs from forks.
+      - name: Bluesky PDS integration (optional)
+        if: github.repository == 'sjmelia/muat' && github.event_name != 'pull_request'
         shell: bash
         env:
           ATPROTO_TEST_IDENTIFIER: ${{ secrets.ATPROTO_TEST_IDENTIFIER }}
           ATPROTO_TEST_PASSWORD: ${{ secrets.ATPROTO_TEST_PASSWORD }}
         run: |
           if [[ -z "$ATPROTO_TEST_IDENTIFIER" || -z "$ATPROTO_TEST_PASSWORD" ]]; then
-            echo "Skipping integration tests: missing ATPROTO_TEST_IDENTIFIER and/or ATPROTO_TEST_PASSWORD secrets."
+            echo "Skipping Bluesky tests: missing ATPROTO_TEST_IDENTIFIER and/or ATPROTO_TEST_PASSWORD secrets."
             exit 0
           fi
           cargo test -p atproto-cli --test bluesky_pds -- --nocapture
