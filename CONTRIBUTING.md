@@ -19,39 +19,7 @@ Key capabilities:
 
 ## Critical Invariants
 
-Before modifying code, understand these non-negotiable invariants:
-
-### Session-First Capability
-
-- ALL authenticated operations MUST go through `Session`
-- No free functions for authenticated endpoints
-- `Session` is the only way to make authenticated requests
-
-### Strong Typing at Boundaries
-
-- Use `Did`, `Nsid`, `AtUri`, `PdsUrl` - NOT `String`
-- Validation happens at construction, not at call sites
-- Parse once, use everywhere
-
-### Security Requirements
-
-- Tokens and passwords MUST NEVER appear in logs
-- `Debug` implementations MUST NOT expose secrets
-- Session files MUST have restricted permissions (0600)
-- Tokens are opaque, first-class values (do not parse them)
-
-### Schema Agnosticism
-
-- Record values use `RecordValue` (guarantees `$type` field, wraps `serde_json::Value`)
-- No lexicon-specific types in `muat-core`
-- Protocol layer does not interpret record contents beyond `$type` presence
-
-### RecordValue Invariants
-
-- `RecordValue` MUST be a JSON object
-- `RecordValue` MUST contain a `$type` field
-- `$type` MUST be a string
-- These are enforced at deserialization time
+The canonical invariants live in `crates/muat-core/docs/Invariants.md`. Please read that document before making changes that affect authentication, tokens, record values, or protocol behavior.
 
 ## File Locations
 

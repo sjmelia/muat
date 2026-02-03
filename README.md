@@ -147,6 +147,16 @@ B2 --> C2
 
 ## Development
 
+### Contributing & Agents
+
+I'm still refining my agent-assisted workflows; on this project i've tried to use PRD spec docs; but I have occasionally collapsed into
+iterative prompting.
+
+- See [AGENTS.md](AGENTS.md) for a minimal context bootstrap.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for agent/human agnostic tips.
+- See [/docs/archive](docs/archive) for historical PRDs and agent-created plans.
+- See [/crates/muat-core/docs/Invariants.md](crates/muat-core/docs/Invariants.md) for some guardrails.
+
 ### Prerequisites
 
 - Rust 2024 edition
@@ -164,15 +174,6 @@ cargo test --workspace
 # Build release
 cargo build --release --workspace
 ```
-
-### Agents
-
-I'm still refining my agent-assisted workflows; on this project i've tried to use PRD spec docs; but I have occasionally collapsed into
-iterative prompting.
-
-- See `/docs/archive` for historical PRD and plans.
-- See [/crates/muat-core/docs/Invariants.md](crates/muat-core/docs/Invariants.md) for some guardrails.
-- See [AGENTS.md](AGENTS.md) for some context tips (which are probably useful for humans as well)
 
 ## CI/CD & Releases
 
